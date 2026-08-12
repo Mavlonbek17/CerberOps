@@ -5,11 +5,30 @@
 #           Windows WSL2 (Ubuntu)
 #
 # Usage:
-#   git clone https://github.com/your-org/cerberops && cd cerberops
-#   chmod +x install.sh && ./install.sh
+#   ./install.sh           # Install missing components, skip what already exists
+#   ./install.sh --update  # Same + update Docker, Ollama, model, and images
 # =============================================================================
 
 set -euo pipefail
+
+# ── Flags ─────────────────────────────────────────────────────────────────────
+UPDATE_MODE=false
+for arg in "$@"; do
+    case "$arg" in
+        --update|-u) UPDATE_MODE=true ;;
+        --help|-h)
+            echo "Usage: ./install.sh [--update]"
+            echo ""
+            echo "  (no flag)   Install missing components only. Skip anything already present."
+            echo "  --update    Also update Docker, Ollama, the AI model, and Docker images."
+            exit 0
+            ;;
+        *)
+            echo "Unknown flag: $arg  (use --help for usage)"
+            exit 1
+            ;;
+    esac
+done
 
 # ── Colors & helpers ──────────────────────────────────────────────────────────
 BOLD='\033[1m'
@@ -27,6 +46,7 @@ warn()    { echo -e "${YELLOW}  ⚠${NC}  $*"; }
 fail()    { echo -e "${RED}  ✖${NC}  $*"; }
 section() { echo -e "\n${BOLD}${MAGENTA}══ $* ══${NC}"; }
 ask()     { echo -e "${YELLOW}  ?${NC}  $*"; }
+updated() { echo -e "${MAGENTA}  ↑${NC}  $*"; }
 
 # ── Banner ────────────────────────────────────────────────────────────────────
 clear
@@ -43,6 +63,10 @@ echo -e "${NC}"
 echo -e "  ${BOLD}DevSecOps Vulnerability Orchestrator${NC}  ${DIM}— Universal Installer${NC}"
 echo -e "  ${DIM}Nmap · Nuclei · OWASP ZAP · Ollama AI · PostgreSQL · Redis${NC}"
 echo ""
+if [[ "$UPDATE_MODE" == true ]]; then
+    echo -e "  ${MAGENTA}${BOLD}[ UPDATE MODE — will upgrade Docker, Ollama, model, and images ]${NC}"
+    echo ""
+fi
 
 # ── Detect OS & Architecture ──────────────────────────────────────────────────
 section "Detecting system"
@@ -97,7 +121,7 @@ elif [[ "$OS" == "linux" ]]; then
 fi
 ok "RAM: ${RAM_GB}GB detected"
 
-# ── Install Docker ────────────────────────────────────────────────────────────
+# ── Docker ────────────────────────────────────────────────────────────────────
 section "Docker"
 
 install_docker_macos() {
@@ -131,7 +155,7 @@ install_docker_macos() {
             info "Launching Docker Desktop..."
             open -a Docker
             echo ""
-            warn "Docker Desktop is launching. Waiting for it to be ready (up to 60s)..."
+            warn "Waiting for Docker Desktop to be ready (up to 60s)..."
             for i in $(seq 1 30); do
                 sleep 2
                 docker info &>/dev/null && break
@@ -139,6 +163,17 @@ install_docker_macos() {
             done
             ;;
     esac
+}
+
+update_docker_macos() {
+    info "Checking for Docker Desktop updates..."
+    # Docker Desktop on macOS updates itself — trigger via softwareupdate or
+    # remind the user since Docker Desktop has its own updater built in.
+    if open -a Docker 2>/dev/null; then
+        # Give Docker Desktop time to check for updates (it does so on launch)
+        sleep 5
+        updated "Docker Desktop launched — use its menu bar icon to apply any pending update"
+    fi
 }
 
 install_docker_linux() {
@@ -175,8 +210,37 @@ install_docker_linux() {
     ok "Docker installed"
 }
 
+update_docker_linux() {
+    info "Updating Docker Engine..."
+    BEFORE=$(docker --version 2>/dev/null || echo "unknown")
+    if [[ "$PKG_MGR" == "apt" ]]; then
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --only-upgrade docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    elif [[ "$PKG_MGR" == "dnf" ]]; then
+        sudo dnf update -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    elif [[ "$PKG_MGR" == "pacman" ]]; then
+        sudo pacman -Syu --noconfirm docker docker-compose
+    fi
+    AFTER=$(docker --version 2>/dev/null || echo "unknown")
+    if [[ "$BEFORE" == "$AFTER" ]]; then
+        ok "Docker already up to date: $AFTER"
+    else
+        updated "Docker updated: $BEFORE → $AFTER"
+    fi
+}
+
+# Ensure Docker is installed and running
 if docker info &>/dev/null 2>&1; then
-    ok "Docker is running: $(docker --version)"
+    DOCKER_VER=$(docker --version)
+    if [[ "$UPDATE_MODE" == true ]]; then
+        if [[ "$OS" == "macos" ]]; then
+            update_docker_macos
+        else
+            update_docker_linux
+        fi
+    else
+        ok "Docker is running: $DOCKER_VER"
+    fi
 elif command -v docker &>/dev/null; then
     warn "Docker is installed but not running. Starting..."
     if [[ "$OS" == "macos" ]]; then
@@ -190,9 +254,12 @@ elif command -v docker &>/dev/null; then
     else
         sudo systemctl start docker
         sleep 3
+        # Also update if in update mode
+        [[ "$UPDATE_MODE" == true ]] && update_docker_linux
     fi
     docker info &>/dev/null && ok "Docker is now running" || { fail "Docker failed to start."; exit 1; }
 else
+    # Not installed at all
     if [[ "$OS" == "macos" ]]; then
         install_docker_macos
     else
@@ -200,17 +267,16 @@ else
     fi
 fi
 
-# Final check
+# Final guard
 docker info &>/dev/null || { fail "Docker is still not running. Please start Docker and re-run."; exit 1; }
 ok "Docker ready: $(docker --version)"
 
-# ── Install Ollama ────────────────────────────────────────────────────────────
+# ── Ollama ────────────────────────────────────────────────────────────────────
 section "Ollama (Local AI)"
 
 install_ollama() {
     info "Installing Ollama..."
     if [[ "$OS" == "macos" ]]; then
-        # Try Homebrew first, fall back to official installer
         if command -v brew &>/dev/null; then
             brew install --cask ollama 2>/dev/null || curl -fsSL https://ollama.com/install.sh | sh
         else
@@ -221,22 +287,46 @@ install_ollama() {
     fi
 }
 
+update_ollama() {
+    info "Updating Ollama..."
+    BEFORE=$(ollama --version 2>/dev/null | head -1 || echo "unknown")
+    if [[ "$OS" == "macos" ]] && command -v brew &>/dev/null; then
+        # Check if installed via Homebrew cask
+        if brew list --cask ollama &>/dev/null 2>&1; then
+            brew upgrade --cask ollama 2>/dev/null || true
+        else
+            curl -fsSL https://ollama.com/install.sh | sh
+        fi
+    else
+        # Official installer is idempotent and updates in place
+        curl -fsSL https://ollama.com/install.sh | sh
+    fi
+    AFTER=$(ollama --version 2>/dev/null | head -1 || echo "unknown")
+    if [[ "$BEFORE" == "$AFTER" ]]; then
+        ok "Ollama already up to date: $AFTER"
+    else
+        updated "Ollama updated: $BEFORE → $AFTER"
+    fi
+}
+
 if command -v ollama &>/dev/null; then
-    ok "Ollama found: $(ollama --version 2>/dev/null | head -1)"
+    if [[ "$UPDATE_MODE" == true ]]; then
+        update_ollama
+    else
+        ok "Ollama found: $(ollama --version 2>/dev/null | head -1)"
+    fi
 else
     warn "Ollama not installed."
     install_ollama
-    ok "Ollama installed"
+    ok "Ollama installed: $(ollama --version 2>/dev/null | head -1)"
 fi
 
-# Start Ollama daemon if not running
+# Ensure Ollama daemon is running
 if ! curl -s http://localhost:11434/api/tags &>/dev/null; then
     info "Starting Ollama service..."
     if [[ "$OS" == "macos" ]]; then
-        # On macOS, open the app or use CLI
         (ollama serve &>/dev/null &)
     else
-        # On Linux, try systemd first
         (sudo systemctl start ollama 2>/dev/null || ollama serve &>/dev/null &)
     fi
     for i in $(seq 1 15); do
@@ -245,18 +335,17 @@ if ! curl -s http://localhost:11434/api/tags &>/dev/null; then
         echo -e "  ${DIM}Waiting for Ollama... ${i}/15${NC}"
     done
 fi
-curl -s http://localhost:11434/api/tags &>/dev/null && ok "Ollama service is running" || warn "Ollama may not be running — AI reports will use fallback mode"
+curl -s http://localhost:11434/api/tags &>/dev/null \
+    && ok "Ollama service is running" \
+    || warn "Ollama daemon not responding — AI reports will use fallback mode"
 
-# ── Choose AI Model ───────────────────────────────────────────────────────────
-section "AI Model Selection"
+# ── AI Model ──────────────────────────────────────────────────────────────────
+section "AI Model"
 
 echo -e "  ${DIM}System: ${RAM_GB}GB RAM · $ARCH${NC}"
 echo ""
 
-# Build recommended model list based on RAM
-echo -e "  ${BOLD}Choose your AI model (used for generating remediation reports):${NC}"
-echo ""
-
+# Build model menu based on RAM
 if [[ $RAM_GB -ge 16 ]]; then
     echo -e "  ${GREEN}★${NC} 1) qwen2.5-coder:7b    — Best quality  · ~4.5GB · Recommended for ${RAM_GB}GB RAM"
     echo "     2) llama3.1:8b          — Great quality · ~5GB   · General purpose"
@@ -276,7 +365,7 @@ else
     RECOMMENDED="llama3.2:1b"
     DEFAULT_CHOICE="1"
 fi
-echo "     5) Skip (use fallback text reports)"
+echo "     5) Skip"
 echo ""
 ask "Select model [default: ${DEFAULT_CHOICE} — ${RECOMMENDED}]:"
 read -r MODEL_CHOICE
@@ -308,22 +397,36 @@ else
 fi
 
 if [[ -n "${CHOSEN_MODEL}" ]]; then
-    # Check if already pulled
-    if ollama list 2>/dev/null | grep -q "^${CHOSEN_MODEL}"; then
-        ok "Model '${CHOSEN_MODEL}' already downloaded"
+    ALREADY_PULLED=false
+    ollama list 2>/dev/null | grep -q "^${CHOSEN_MODEL}" && ALREADY_PULLED=true
+
+    if [[ "$ALREADY_PULLED" == true && "$UPDATE_MODE" == false ]]; then
+        ok "Model '${CHOSEN_MODEL}' already downloaded — skipping"
     else
-        info "Pulling model: ${CHOSEN_MODEL}"
-        info "This downloads once and is stored locally. Size varies (600MB–5GB)."
-        echo ""
-        ollama pull "${CHOSEN_MODEL}"
-        ok "Model '${CHOSEN_MODEL}' ready"
+        if [[ "$UPDATE_MODE" == true && "$ALREADY_PULLED" == true ]]; then
+            info "Pulling latest version of '${CHOSEN_MODEL}'..."
+            BEFORE_DIGEST=$(ollama show "${CHOSEN_MODEL}" 2>/dev/null | grep -i digest | awk '{print $2}' || echo "unknown")
+            ollama pull "${CHOSEN_MODEL}"
+            AFTER_DIGEST=$(ollama show "${CHOSEN_MODEL}" 2>/dev/null | grep -i digest | awk '{print $2}' || echo "unknown")
+            if [[ "$BEFORE_DIGEST" == "$AFTER_DIGEST" ]]; then
+                ok "Model '${CHOSEN_MODEL}' already at latest version"
+            else
+                updated "Model '${CHOSEN_MODEL}' updated to latest"
+            fi
+        else
+            info "Pulling model: ${CHOSEN_MODEL}"
+            info "This downloads once and is stored locally (600MB–5GB)."
+            echo ""
+            ollama pull "${CHOSEN_MODEL}"
+            ok "Model '${CHOSEN_MODEL}' ready"
+        fi
     fi
 else
-    warn "Skipping model download — AI reports will use text templates"
-    CHOSEN_MODEL="qwen2.5-coder:1.5b"
+    warn "Skipping model — AI reports will use text templates"
+    CHOSEN_MODEL="${RECOMMENDED}"
 fi
 
-# ── Create .env ───────────────────────────────────────────────────────────────
+# ── Configuration ─────────────────────────────────────────────────────────────
 section "Configuration"
 
 if [[ -f .env ]]; then
@@ -333,7 +436,6 @@ else
         cp .env.example .env
         ok ".env created from template"
     else
-        # Create minimal .env from scratch
         cat > .env << ENVEOF
 DATABASE_URL=postgresql+asyncpg://cerberops:cerberops_secret@postgres:5432/cerberops
 REDIS_URL=redis://redis:6379/0
@@ -352,37 +454,40 @@ ENVEOF
     fi
 fi
 
-# Update OLLAMA_MODEL in .env to match what was chosen
+# Always sync OLLAMA_MODEL in .env to the chosen model
 if [[ "$OS" == "macos" ]]; then
     sed -i '' "s|^OLLAMA_MODEL=.*|OLLAMA_MODEL=${CHOSEN_MODEL}|" .env
-else
-    sed -i "s|^OLLAMA_MODEL=.*|OLLAMA_MODEL=${CHOSEN_MODEL}|" .env
-fi
-
-# Ensure OLLAMA_BASE_URL uses host.docker.internal (Docker → host Ollama)
-if [[ "$OS" == "macos" ]]; then
     sed -i '' "s|^OLLAMA_BASE_URL=.*|OLLAMA_BASE_URL=http://host.docker.internal:11434|" .env
 elif [[ "$IS_WSL" == true ]]; then
-    # In WSL, Docker can't use host.docker.internal reliably — use the gateway
     GATEWAY=$(ip route show default 2>/dev/null | awk '/default/ {print $3}' | head -1)
+    sed -i "s|^OLLAMA_MODEL=.*|OLLAMA_MODEL=${CHOSEN_MODEL}|" .env
     sed -i "s|^OLLAMA_BASE_URL=.*|OLLAMA_BASE_URL=http://${GATEWAY}:11434|" .env
 else
+    sed -i "s|^OLLAMA_MODEL=.*|OLLAMA_MODEL=${CHOSEN_MODEL}|" .env
     sed -i "s|^OLLAMA_BASE_URL=.*|OLLAMA_BASE_URL=http://host.docker.internal:11434|" .env
 fi
 
-ok "Configuration ready"
+ok "Configuration ready (model: ${CHOSEN_MODEL})"
 
-# ── Build & Launch via Docker Compose ────────────────────────────────────────
+# ── Build & Launch ────────────────────────────────────────────────────────────
 section "Building & Starting CerberOps"
 
-info "Building Docker images (first run takes 2–5 minutes)..."
-docker compose build
+if [[ "$UPDATE_MODE" == true ]]; then
+    info "Pulling latest base images from Docker Hub..."
+    docker compose pull --quiet || true
+    info "Rebuilding CerberOps images (no cache)..."
+    docker compose build --no-cache
+    info "Restarting all services..."
+    docker compose up -d --force-recreate
+    updated "All Docker images rebuilt and services restarted"
+else
+    info "Building Docker images (first run takes 2–5 minutes)..."
+    docker compose build
+    info "Starting all services..."
+    docker compose up -d
+fi
 
-echo ""
-info "Starting all services..."
-docker compose up -d
-
-# ── Health Check ─────────────────────────────────────────────────────────────
+# ── Health Check ──────────────────────────────────────────────────────────────
 section "Health Check"
 
 info "Waiting for services to be ready..."
@@ -398,11 +503,12 @@ done
 
 if curl -s http://localhost:8000/api/v1/health &>/dev/null; then
     HEALTH=$(curl -s http://localhost:8000/api/v1/health)
-    NMAP_OK=$(echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print('✔' if d['scanners']['nmap'] else '✖')" 2>/dev/null || echo "?")
-    NUCLEI_OK=$(echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print('✔' if d['scanners']['nuclei'] else '✖')" 2>/dev/null || echo "?")
-    ZAP_OK=$(echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print('✔' if d['scanners']['zap'] else '✖')" 2>/dev/null || echo "?")
-    AI_OK=$(echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print('✔' if d['ollama_available'] else '✖')" 2>/dev/null || echo "?")
-    DB_OK=$(echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print('✔' if d['database'] else '✖')" 2>/dev/null || echo "?")
+    _check() { echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print('✔' if $1 else '✖')" 2>/dev/null || echo "?"; }
+    NMAP_OK=$(_check   "d['scanners']['nmap']")
+    NUCLEI_OK=$(_check "d['scanners']['nuclei']")
+    ZAP_OK=$(_check    "d['scanners']['zap']")
+    AI_OK=$(_check     "d['ollama_available']")
+    DB_OK=$(_check     "d['database']")
 
     echo ""
     echo -e "  ${BOLD}Service Status:${NC}"
@@ -412,13 +518,17 @@ if curl -s http://localhost:8000/api/v1/health &>/dev/null; then
     echo -e "    ${CYAN}Ollama AI${NC}   $AI_OK  (model: ${CHOSEN_MODEL})"
     echo -e "    ${CYAN}Database${NC}    $DB_OK"
 else
-    warn "API not ready yet — it may still be starting up"
+    warn "API not ready yet — it may still be starting. Check: curl http://localhost:8000/api/v1/health"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${GREEN}╔══════════════════════════════════════════╗${NC}"
+if [[ "$UPDATE_MODE" == true ]]; then
+echo -e "${BOLD}${GREEN}║   CerberOps updated & ready!            ║${NC}"
+else
 echo -e "${BOLD}${GREEN}║   CerberOps is ready!                   ║${NC}"
+fi
 echo -e "${BOLD}${GREEN}╚══════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  ${BOLD}Dashboard${NC}    →  http://localhost:3000"
@@ -434,4 +544,5 @@ echo -e "  ${BOLD}Manage:${NC}"
 echo -e "  ${DIM}docker compose logs -f       # View logs${NC}"
 echo -e "  ${DIM}docker compose down          # Stop everything${NC}"
 echo -e "  ${DIM}docker compose restart       # Restart${NC}"
+echo -e "  ${DIM}./install.sh --update        # Update everything${NC}"
 echo ""
