@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, CheckCircle2, RotateCw, XCircle, Clock } from 'lucide-react';
+import { Search, CheckCircle2, RotateCw, XCircle, Clock, Tag } from 'lucide-react';
 import type { ScanSummary } from '../types';
 
 interface Props {
@@ -21,11 +21,13 @@ const STATUS_ICON: Record<string, { icon: typeof Clock; color: string }> = {
 export default function ScanHistoryView({ scans, onSelectScan }: Props) {
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState('');
 
   const filtered = scans.filter((s) => {
     const matchesTarget = s.target.toLowerCase().includes(filter.toLowerCase());
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
-    return matchesTarget && matchesStatus;
+    const matchesTag = tagFilter.trim() === '' || (s.tags && s.tags.some(t => t.toLowerCase().includes(tagFilter.toLowerCase())));
+    return matchesTarget && matchesStatus && matchesTag;
   });
 
   return (
@@ -42,6 +44,16 @@ export default function ScanHistoryView({ scans, onSelectScan }: Props) {
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter by target…"
             className="w-full pl-10 pr-4 py-3 bg-surface-container border border-outline-variant rounded-xl text-[14px] text-on-background focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+          />
+        </div>
+        <div className="relative">
+          <Tag className="w-4 h-4 text-on-surface-variant absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            placeholder="Filter by tag…"
+            className="w-full pl-10 pr-4 py-3 bg-surface-container border border-outline-variant rounded-xl text-[14px] text-on-background focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all min-w-[160px]"
           />
         </div>
         <select
@@ -67,8 +79,9 @@ export default function ScanHistoryView({ scans, onSelectScan }: Props) {
       {/* Table */}
       <div className="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
         <div className="grid grid-cols-12 px-5 py-3 border-b border-outline-variant bg-surface-container-high text-[12px] font-semibold text-on-surface-variant uppercase tracking-wide">
-          <div className="col-span-5">Target</div>
-          <div className="col-span-3">Scanners</div>
+          <div className="col-span-4">Target</div>
+          <div className="col-span-2">Tags</div>
+          <div className="col-span-2">Scanners</div>
           <div className="col-span-2">Status</div>
           <div className="col-span-2 text-right">Findings</div>
         </div>
@@ -85,8 +98,15 @@ export default function ScanHistoryView({ scans, onSelectScan }: Props) {
                 onClick={() => onSelectScan(s.id)}
                 className="grid grid-cols-12 px-5 py-3.5 items-center hover:bg-surface-container-high/50 transition-colors cursor-pointer text-[13px]"
               >
-                <div className="col-span-5 font-medium text-on-background truncate pr-3">{s.target}</div>
-                <div className="col-span-3 text-on-surface-variant text-[12px]">{s.scanners.map(sc => sc.toUpperCase()).join(' · ')}</div>
+                <div className="col-span-4 font-medium text-on-background truncate pr-3">{s.target}</div>
+                <div className="col-span-2 flex flex-wrap gap-1 pr-2">
+                  {s.tags && s.tags.length > 0 ? s.tags.slice(0, 2).map(tag => (
+                    <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-primary/8 text-primary rounded font-medium truncate max-w-[80px]">{tag}</span>
+                  )) : (
+                    <span className="text-[12px] text-on-surface-variant/40">—</span>
+                  )}
+                </div>
+                <div className="col-span-2 text-on-surface-variant text-[12px]">{s.scanners.map(sc => sc.toUpperCase()).join(' · ')}</div>
                 <div className={`col-span-2 flex items-center gap-1.5 ${st.color}`}>
                   <Icon className={`w-3.5 h-3.5 ${['running','parsing','analyzing'].includes(s.status) ? 'animate-spin' : ''}`} />
                   <span className="capitalize">{s.status}</span>

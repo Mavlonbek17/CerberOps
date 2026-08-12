@@ -28,6 +28,8 @@ export interface Finding {
   ai_verdict: AiVerdict;
   ai_triage_notes: string | null;
   has_poc: boolean;
+  cvss_score: number | null;
+  cvss_vector: string | null;
 }
 
 export interface ScanDetail {
@@ -46,6 +48,7 @@ export interface ScanDetail {
   smart_recon: boolean;
   recon_summary: string | null;
   ai_scan_plan: string | null;
+  tags: string[];
 }
 
 export interface ScanSummary {
@@ -56,6 +59,7 @@ export interface ScanSummary {
   findings_count: number;
   progress?: number;
   created_at: string;
+  tags: string[];
 }
 
 export interface Report {
@@ -87,4 +91,28 @@ export interface PocResult {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+export type ScheduleInterval = 'daily' | 'weekly' | 'monthly';
+
+export interface ScheduledScan {
+  id: string;
+  target: string;
+  scanners: string[];
+  tags: string[];
+  schedule: ScheduleInterval;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationConfig {
+  id: string;
+  name: string;
+  type: 'slack' | 'webhook' | 'email';
+  config: Record<string, string>;
+  events: string[];
+  enabled: boolean;
+  created_at: string;
 }

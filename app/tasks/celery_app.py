@@ -40,5 +40,13 @@ celery_app.conf.update(
 
 celery_app.autodiscover_tasks(["app.tasks"])
 
+celery_app.conf.beat_schedule = {
+    "run-due-scheduled-scans": {
+        "task": "app.tasks.scheduled_scan_tasks.run_due_scheduled_scans",
+        "schedule": 60.0,  # every 60 seconds
+    },
+}
+
 # Import tasks so Celery registers them after the app is created
 from app.tasks import scan_tasks  # noqa: E402, F401
+from app.tasks import scheduled_scan_tasks  # noqa: E402, F401

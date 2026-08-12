@@ -3,9 +3,11 @@ import {
   BarChart3,
   Calendar,
   CheckCircle2,
+  Download,
   ExternalLink,
   Eye,
   EyeOff,
+  FileDown,
   FileText,
   Loader2,
   MessageSquare,
@@ -13,6 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { Finding, HealthCheck, ScanDetail, ScanSummary, Severity } from '../types';
+import { getExportUrl } from '../api/client';
 import ChatPanel from './ChatPanel';
 import PocViewer from './PocViewer';
 
@@ -120,12 +123,26 @@ export default function LiveResults({ scan, health, scans, onViewReport, onNavig
           </button>
         ))}
         {scan?.status === 'completed' && (
-          <button
-            onClick={() => onViewReport(scan.id)}
-            className="ml-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-medium text-on-surface-variant hover:text-on-background hover:bg-surface-container-high transition-colors cursor-pointer"
-          >
-            <ExternalLink className="w-3 h-3" /> Report
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={() => window.open(getExportUrl(scan.id, 'html'), '_blank')}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-medium text-on-surface-variant hover:text-on-background hover:bg-surface-container-high transition-colors cursor-pointer"
+            >
+              <FileDown className="w-3 h-3" /> Export HTML
+            </button>
+            <button
+              onClick={() => window.open(getExportUrl(scan.id, 'json'), '_blank')}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-medium text-on-surface-variant hover:text-on-background hover:bg-surface-container-high transition-colors cursor-pointer"
+            >
+              <Download className="w-3 h-3" /> JSON
+            </button>
+            <button
+              onClick={() => onViewReport(scan.id)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-medium text-on-surface-variant hover:text-on-background hover:bg-surface-container-high transition-colors cursor-pointer"
+            >
+              <ExternalLink className="w-3 h-3" /> Report
+            </button>
+          </div>
         )}
       </div>
 
@@ -205,6 +222,11 @@ export default function LiveResults({ scan, health, scans, onViewReport, onNavig
                       <span className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded border ${sev.badge}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${sev.dot}`} /> {sev.label}
                       </span>
+                      {f.cvss_score !== null && f.cvss_score !== undefined && (
+                        <span className="inline-flex items-center text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-surface-container-highest border border-outline-variant text-on-surface-variant">
+                          CVSS {f.cvss_score.toFixed(1)}
+                        </span>
+                      )}
                       <h4 className="text-[14px] font-semibold text-on-background">{f.title}</h4>
                       <AiVerdictBadge finding={f} />
                     </div>

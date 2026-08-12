@@ -8,6 +8,7 @@ import {
   HelpCircle,
   Terminal,
   Plus,
+  CalendarClock,
 } from 'lucide-react';
 
 export type NavView =
@@ -16,6 +17,7 @@ export type NavView =
   | 'ai_chat'
   | 'scan_history'
   | 'network_map'
+  | 'scheduler'
   | 'settings'
   | 'logs'
   | 'support';
@@ -39,6 +41,7 @@ const MAIN_ITEMS: {
   { label: 'AI Chat',      view: 'ai_chat',      icon: MessageSquare,   activeColor: 'text-[#bc8cff]', activeBg: 'bg-[#bc8cff]/12', activeDot: 'bg-[#bc8cff]' },
   { label: 'Scan History', view: 'scan_history', icon: History,         activeColor: 'text-[#d29922]', activeBg: 'bg-[#d29922]/12', activeDot: 'bg-[#d29922]' },
   { label: 'Network Map',  view: 'network_map',  icon: Network,         activeColor: 'text-[#4493f8]', activeBg: 'bg-[#4493f8]/12', activeDot: 'bg-[#4493f8]' },
+  { label: 'Scheduler',    view: 'scheduler',    icon: CalendarClock,   activeColor: 'text-[#3fb950]', activeBg: 'bg-[#3fb950]/12', activeDot: 'bg-[#3fb950]' },
 ];
 
 const FOOTER_ITEMS: { label: string; view: NavView; icon: typeof HelpCircle }[] = [

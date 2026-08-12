@@ -49,9 +49,18 @@ export default function ScanList({ scans, onSelect, onCancel, selectedId }: Prop
               onClick={() => onSelect(scan.id)}
             >
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-[13px] font-medium text-on-background truncate max-w-[180px]">
-                  {scan.target.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[13px] font-medium text-on-background truncate block max-w-[180px]">
+                    {scan.target.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                  </span>
+                  {scan.tags && scan.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {scan.tags.slice(0, 3).map(tag => (
+                        <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-primary/8 text-primary rounded font-medium">{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <span className={`flex items-center gap-1 text-[11px] font-medium ${cfg.color}`}>
                   <Icon className={`w-3 h-3 ${cfg.spin ? 'animate-spin' : ''}`} />
                   {cfg.label}

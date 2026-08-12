@@ -83,6 +83,9 @@ class ScanJob(SQLModel, table=True):
     recon_summary: str | None = Field(default=None)
     ai_scan_plan: str | None = Field(default=None)
 
+    # ── Labels ────────────────────────────────────────────────────
+    tags: str | None = Field(default=None, max_length=512)  # comma-separated
+
     findings: list["Finding"] = Relationship(back_populates="scan_job")
     report: Optional["Report"] = Relationship(back_populates="scan_job")
 
@@ -114,6 +117,10 @@ class Finding(SQLModel, table=True):
         default_factory=_utcnow,
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+
+    # ── CVSS ──────────────────────────────────────────────────────
+    cvss_score: float | None = Field(default=None)
+    cvss_vector: str | None = Field(default=None, max_length=256)
 
     # ── AI False Positive Triage ─────────────────────────────────
     ai_verdict: AiVerdict = Field(
@@ -150,3 +157,43 @@ class Report(SQLModel, table=True):
     )
 
     scan_job: Optional["ScanJob"] = Relationship(back_populates="report")
+
+
+class ScheduledScan(SQLModel, table=True):
+    __tablename__ = "scheduled_scans"
+
+    id: str = Field(default_factory=_new_id, primary_key=True, max_length=32)
+    target: str = Field(index=True, max_length=2048)
+    scanners: str = Field(default="nmap,nuclei", max_length=128)
+    tags: str | None = Field(default=None, max_length=512)
+    schedule: str = Field(default="daily", max_length=32)  # daily, weekly, monthly
+    enabled: bool = Field(default=True)
+    allow_internal: bool = Field(default=False)
+    smart_recon: bool = Field(default=True)
+    last_run_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    next_run_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class NotificationConfig(SQLModel, table=True):
+    __tablename__ = "notification_configs"
+
+    id: str = Field(default_factory=_new_id, primary_key=True, max_length=32)
+    name: str = Field(max_length=128)
+    type: str = Field(max_length=32)  # "slack", "webhook", "email"
+    config: str = Field(default="{}", max_length=4096)  # JSON
+    events: str = Field(default="scan_complete,critical_found", max_length=256)
+    enabled: bool = Field(default=True)
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )

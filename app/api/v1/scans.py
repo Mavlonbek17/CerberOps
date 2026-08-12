@@ -57,6 +57,8 @@ def _finding_to_out(f: Finding) -> FindingOut:
         ai_verdict=f.ai_verdict,
         ai_triage_notes=f.ai_triage_notes,
         has_poc=bool(f.poc_code),
+        cvss_score=f.cvss_score,
+        cvss_vector=f.cvss_vector,
     )
 
 
@@ -102,6 +104,7 @@ async def create_scan(
         scanners=",".join(body.scanners),
         allow_internal=body.allow_internal,
         smart_recon=body.smart_recon,
+        tags=",".join(body.tags) if body.tags else None,
     )
     session.add(job)
     await session.commit()
@@ -147,6 +150,7 @@ async def list_scans(
             scanners=[s.strip() for s in job.scanners.split(",")],
             findings_count=findings_count,
             created_at=job.created_at,
+            tags=[t.strip() for t in job.tags.split(",") if t.strip()] if job.tags else [],
         ))
 
     return summaries
@@ -190,6 +194,7 @@ async def get_scan(
         smart_recon=job.smart_recon,
         recon_summary=job.recon_summary,
         ai_scan_plan=job.ai_scan_plan,
+        tags=[t.strip() for t in job.tags.split(",") if t.strip()] if job.tags else [],
     )
 
 

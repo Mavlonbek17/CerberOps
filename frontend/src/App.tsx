@@ -22,6 +22,7 @@ import ScanHistoryView from './components/ScanHistoryView';
 import LogsView from './components/LogsView';
 import SupportView from './components/SupportView';
 import ChatPanel from './components/ChatPanel';
+import SchedulerView from './components/SchedulerView';
 import type { ScanStatus } from './types';
 import {
   healthCheck,
@@ -42,6 +43,15 @@ export default function App() {
   const [showReport, setShowReport] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('cerberops_theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('cerberops_theme', theme);
+  }, [theme]);
 
   const refresh = useCallback(async () => {
     try {
@@ -78,12 +88,13 @@ export default function App() {
     target: string,
     scanners: string[],
     allowInternal: boolean,
-    smartRecon: boolean
+    smartRecon: boolean,
+    tags: string[]
   ) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await startScan(target, scanners, allowInternal, smartRecon);
+      const result = await startScan(target, scanners, allowInternal, smartRecon, tags);
       const detail = await getScan(result.job_id);
       setSelectedScan(detail);
       setShowReport(false);
@@ -145,7 +156,12 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-on-background overflow-hidden">
-      <Header health={health} onViewChange={setCurrentView} />
+      <Header
+        health={health}
+        onViewChange={setCurrentView}
+        theme={theme}
+        onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+      />
 
       {/* ── Below header: sidebar + main ── */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
@@ -348,6 +364,13 @@ export default function App() {
                 selectedScan={selectedScan}
                 onSelectScan={handleSelectScan}
               />
+            </div>
+          )}
+
+          {/* ── SCHEDULER ── */}
+          {currentView === 'scheduler' && (
+            <div className="px-6 py-6">
+              <SchedulerView />
             </div>
           )}
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Key,
   Cpu,
@@ -9,8 +9,13 @@ import {
   EyeOff,
   Zap,
   AlertTriangle,
+  Bell,
+  Trash2,
+  Plus,
+  Send,
 } from 'lucide-react';
-import type { HealthCheck } from '../types';
+import type { HealthCheck, NotificationConfig } from '../types';
+import { listNotifications, createNotification, deleteNotification, testNotification } from '../api/client';
 
 interface Props {
   health: HealthCheck | null;
@@ -23,6 +28,17 @@ const MODELS = [
   { value: 'mistral:latest',       label: 'mistral',        tag: 'Fast'        },
 ];
 
+const NOTIF_EVENTS = [
+  { id: 'scan_complete', label: 'Scan Complete' },
+  { id: 'critical_found', label: 'Critical Found' },
+];
+
+const CONFIG_FIELDS: Record<string, { key: string; label: string; placeholder: string }[]> = {
+  slack:   [{ key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://hooks.slack.com/services/…' }],
+  webhook: [{ key: 'url',         label: 'URL',         placeholder: 'https://your-server.com/hook' }],
+  email:   [{ key: 'to',          label: 'To Address',  placeholder: 'security@example.com' }],
+};
+
 export default function SettingsView({ health }: Props) {
   const [apiKey, setApiKey]         = useState(localStorage.getItem('cerberops_api_key') || '');
   const [showKey, setShowKey]       = useState(false);
@@ -32,13 +48,68 @@ export default function SettingsView({ health }: Props) {
   const [fpFilter, setFpFilter]     = useState(true);
   const [saved, setSaved]           = useState(false);
 
+  // Notifications state
+  const [notifications, setNotifications] = useState<NotificationConfig[]>([]);
+  const [notifType, setNotifType]         = useState<'slack' | 'webhook' | 'email'>('slack');
+  const [notifName, setNotifName]         = useState('');
+  const [notifConfig, setNotifConfig]     = useState<Record<string, string>>({});
+  const [notifEvents, setNotifEvents]     = useState<string[]>(['scan_complete']);
+  const [showNotifForm, setShowNotifForm] = useState(false);
+  const [savingNotif, setSavingNotif]     = useState(false);
+  const [testingId, setTestingId]         = useState<string | null>(null);
+
   const ollamaOk = health?.ollama_available ?? false;
+
+  useEffect(() => {
+    listNotifications()
+      .then(setNotifications)
+      .catch(() => { /* API may not support notifications yet */ });
+  }, []);
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
     localStorage.setItem('cerberops_api_key', apiKey.trim());
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleCreateNotif = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!notifName.trim() || notifEvents.length === 0) return;
+    setSavingNotif(true);
+    try {
+      const created = await createNotification({
+        name: notifName.trim(),
+        type: notifType,
+        config: notifConfig,
+        events: notifEvents,
+        enabled: true,
+      });
+      setNotifications(n => [created, ...n]);
+      setNotifName('');
+      setNotifConfig({});
+      setNotifEvents(['scan_complete']);
+      setShowNotifForm(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingNotif(false);
+    }
+  };
+
+  const handleDeleteNotif = async (id: string) => {
+    await deleteNotification(id).catch(console.error);
+    setNotifications(n => n.filter(x => x.id !== id));
+  };
+
+  const handleTestNotif = async (id: string) => {
+    setTestingId(id);
+    await testNotification(id).catch(console.error);
+    setTimeout(() => setTestingId(null), 2000);
+  };
+
+  const toggleEvent = (ev: string) => {
+    setNotifEvents(prev => prev.includes(ev) ? prev.filter(x => x !== ev) : [...prev, ev]);
   };
 
   return (
@@ -229,6 +300,145 @@ export default function SettingsView({ health }: Props) {
           </div>
         )}
       </form>
+
+      {/* ── Notifications ── (outside form to avoid form submit conflict) */}
+      <div className="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-outline-variant">
+          <div className="w-8 h-8 rounded-lg bg-primary/12 flex items-center justify-center shrink-0">
+            <Bell className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-[14px] font-semibold text-on-background">Notifications</h3>
+            <p className="text-[12px] text-on-surface-variant mt-0.5">Send alerts to Slack, webhooks, or email on scan events.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowNotifForm(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium bg-primary/10 text-primary border border-primary/25 hover:bg-primary/15 transition-colors cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add
+          </button>
+        </div>
+
+        {/* Add notification form */}
+        {showNotifForm && (
+          <form onSubmit={handleCreateNotif} className="px-5 py-5 space-y-4 border-b border-outline-variant bg-surface-container-low/50">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-medium text-on-surface-variant">Name</label>
+                <input
+                  type="text"
+                  value={notifName}
+                  onChange={e => setNotifName(e.target.value)}
+                  placeholder="My Slack Alert"
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-[14px] text-on-background focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-medium text-on-surface-variant">Type</label>
+                <select
+                  value={notifType}
+                  onChange={e => { setNotifType(e.target.value as 'slack' | 'webhook' | 'email'); setNotifConfig({}); }}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-[14px] text-on-background focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="slack">Slack</option>
+                  <option value="webhook">Webhook</option>
+                  <option value="email">Email</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Config fields */}
+            {CONFIG_FIELDS[notifType].map(field => (
+              <div key={field.key} className="space-y-1.5">
+                <label className="text-[13px] font-medium text-on-surface-variant">{field.label}</label>
+                <input
+                  type="text"
+                  value={notifConfig[field.key] || ''}
+                  onChange={e => setNotifConfig(c => ({ ...c, [field.key]: e.target.value }))}
+                  placeholder={field.placeholder}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-[14px] text-on-background font-mono focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                />
+              </div>
+            ))}
+
+            {/* Events */}
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-medium text-on-surface-variant">Events</label>
+              <div className="flex gap-3">
+                {NOTIF_EVENTS.map(ev => (
+                  <label key={ev.id} className={`flex items-center gap-2 px-3.5 py-2 rounded-lg border text-[13px] font-medium cursor-pointer transition-all ${
+                    notifEvents.includes(ev.id)
+                      ? 'bg-primary/10 border-primary/40 text-primary'
+                      : 'border-outline-variant text-on-surface-variant hover:border-outline'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={notifEvents.includes(ev.id)}
+                      onChange={() => toggleEvent(ev.id)}
+                      className="sr-only"
+                    />
+                    {ev.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowNotifForm(false)}
+                className="px-4 py-2.5 rounded-xl text-[14px] font-medium text-on-surface-variant border border-outline-variant hover:border-outline cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!notifName.trim() || notifEvents.length === 0 || savingNotif}
+                className="px-6 py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-[14px] cursor-pointer hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {savingNotif ? 'Saving…' : 'Add Notification'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* List of existing notifications */}
+        {notifications.length === 0 && !showNotifForm ? (
+          <div className="px-5 py-8 text-center text-[13px] text-on-surface-variant">
+            No notification channels configured.
+          </div>
+        ) : (
+          <div className="divide-y divide-outline-variant/60">
+            {notifications.map(n => (
+              <div key={n.id} className="flex items-center gap-4 px-5 py-4">
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-medium text-on-background">{n.name}</div>
+                  <div className="text-[12px] text-on-surface-variant mt-0.5 capitalize">
+                    {n.type} · {n.events.join(', ')}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTestNotif(n.id)}
+                  disabled={testingId === n.id}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-on-surface-variant border border-outline-variant hover:border-outline hover:text-on-background transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Send className="w-3 h-3" />
+                  {testingId === n.id ? 'Sent!' : 'Test'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteNotif(n.id)}
+                  className="p-2 rounded-lg text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,13 +1,15 @@
-import { ShieldCheck, Activity, Settings } from 'lucide-react';
+import { ShieldCheck, Activity, Settings, Sun, Moon } from 'lucide-react';
 import type { HealthCheck } from '../types';
 import type { NavView } from './SideNav';
 
 interface Props {
   health: HealthCheck | null;
   onViewChange: (view: NavView) => void;
+  theme: 'dark' | 'light';
+  onToggleTheme: () => void;
 }
 
-export default function Header({ health, onViewChange }: Props) {
+export default function Header({ health, onViewChange, theme, onToggleTheme }: Props) {
   const isHealthy = health?.status === 'healthy';
 
   return (
@@ -34,6 +36,15 @@ export default function Header({ health, onViewChange }: Props) {
         </div>
 
         <div className="w-px h-5 bg-outline-variant mx-1" />
+
+        {/* Theme toggle */}
+        <button
+          onClick={onToggleTheme}
+          className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-surface-container-high transition-colors cursor-pointer text-on-surface-variant hover:text-on-background"
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
 
         <button
           onClick={() => onViewChange('settings')}

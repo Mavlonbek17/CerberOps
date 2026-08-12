@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     # Chat: max findings/characters fed into the chat context window
     ai_chat_max_findings: int = 40
 
+    # ── Notifications ──────────────────────────────────────────────
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "cerberops@localhost"
+    notification_email_to: str = ""
+
+    # ── Scheduler ─────────────────────────────────────────────────
+    scheduler_enabled: bool = True
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
 
 

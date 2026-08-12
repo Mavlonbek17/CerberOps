@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models import AiVerdict, ScanStatus, Severity
+from app.models import AiVerdict, ScanStatus, Severity  # noqa: F401
 
 # ── Requests ──────────────────────────────────────────────────────
 
@@ -29,6 +29,7 @@ class ScanRequest(BaseModel):
         description="Fingerprint the target first and let local AI narrow scanner "
         "templates/ports before running the full scan (faster, less noisy)",
     )
+    tags: list[str] = Field(default=[], description="Optional labels for this scan")
 
 
 # ── Responses ─────────────────────────────────────────────────────
@@ -61,6 +62,8 @@ class FindingOut(BaseModel):
     ai_verdict: AiVerdict = AiVerdict.UNREVIEWED
     ai_triage_notes: str | None = None
     has_poc: bool = False
+    cvss_score: float | None = None
+    cvss_vector: str | None = None
 
 
 class ScanDetail(BaseModel):
@@ -81,6 +84,7 @@ class ScanDetail(BaseModel):
     smart_recon: bool = True
     recon_summary: str | None = None
     ai_scan_plan: str | None = None
+    tags: list[str] = []
 
 
 class ScanSummary(BaseModel):
@@ -92,6 +96,7 @@ class ScanSummary(BaseModel):
     scanners: list[str]
     findings_count: int = 0
     created_at: datetime
+    tags: list[str] = []
 
 
 class ReportOut(BaseModel):
@@ -150,3 +155,49 @@ class SetupResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+# ── Scheduler ─────────────────────────────────────────────────────
+
+class ScheduledScanCreate(BaseModel):
+    target: str
+    scanners: list[str] = ["nmap", "nuclei"]
+    tags: list[str] = []
+    schedule: str = "daily"
+    enabled: bool = True
+    allow_internal: bool = False
+    smart_recon: bool = True
+
+
+class ScheduledScanOut(BaseModel):
+    id: str
+    target: str
+    scanners: list[str]
+    tags: list[str]
+    schedule: str
+    enabled: bool
+    allow_internal: bool
+    smart_recon: bool
+    last_run_at: datetime | None = None
+    next_run_at: datetime | None = None
+    created_at: datetime
+
+
+# ── Notifications ─────────────────────────────────────────────────
+
+class NotificationConfigCreate(BaseModel):
+    name: str
+    type: str  # slack, webhook, email
+    config: dict = {}
+    events: list[str] = ["scan_complete", "critical_found"]
+    enabled: bool = True
+
+
+class NotificationConfigOut(BaseModel):
+    id: str
+    name: str
+    type: str
+    config: dict
+    events: list[str]
+    enabled: bool
+    created_at: datetime

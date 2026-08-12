@@ -1,11 +1,13 @@
 import type {
   ChatMessage,
   HealthCheck,
+  NotificationConfig,
   PocResult,
   Report,
   ScanCreated,
   ScanDetail,
   ScanSummary,
+  ScheduledScan,
 } from '../types';
 
 const BASE = '/api/v1';
@@ -26,7 +28,8 @@ export async function startScan(
   target: string,
   scanners: string[] = ['nmap', 'nuclei', 'zap'],
   allowInternal = false,
-  smartRecon = true
+  smartRecon = true,
+  tags: string[] = []
 ): Promise<ScanCreated> {
   const r = await fetch(`${BASE}/scan`, {
     method: 'POST',
@@ -36,6 +39,7 @@ export async function startScan(
       scanners,
       allow_internal: allowInternal,
       smart_recon: smartRecon,
+      tags,
     }),
   });
   if (!r.ok) {
@@ -96,4 +100,61 @@ export async function chatWithScan(
     throw new Error(err.detail || 'Chat failed');
   }
   return r.json();
+}
+
+// Export
+export function getExportUrl(jobId: string, format: 'json' | 'html'): string {
+  return `${BASE}/report/${jobId}/export?format=${format}`;
+}
+
+// Scheduled scans
+export async function listScheduledScans(): Promise<ScheduledScan[]> {
+  const r = await fetch(`${BASE}/scheduler`, { headers: headers() });
+  return r.json();
+}
+
+export async function createScheduledScan(data: {
+  target: string; scanners: string[]; tags: string[];
+  schedule: string; enabled: boolean; allow_internal: boolean; smart_recon: boolean;
+}): Promise<ScheduledScan> {
+  const r = await fetch(`${BASE}/scheduler`, {
+    method: 'POST', headers: headers(), body: JSON.stringify(data),
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.detail || 'Failed'); }
+  return r.json();
+}
+
+export async function deleteScheduledScan(id: string): Promise<void> {
+  await fetch(`${BASE}/scheduler/${id}`, { method: 'DELETE', headers: headers() });
+}
+
+export async function toggleScheduledScan(id: string, enabled: boolean): Promise<ScheduledScan> {
+  const r = await fetch(`${BASE}/scheduler/${id}`, {
+    method: 'PATCH', headers: headers(), body: JSON.stringify({ enabled }),
+  });
+  return r.json();
+}
+
+// Notifications
+export async function listNotifications(): Promise<NotificationConfig[]> {
+  const r = await fetch(`${BASE}/notifications`, { headers: headers() });
+  return r.json();
+}
+
+export async function createNotification(data: {
+  name: string; type: string; config: Record<string, string>; events: string[]; enabled: boolean;
+}): Promise<NotificationConfig> {
+  const r = await fetch(`${BASE}/notifications`, {
+    method: 'POST', headers: headers(), body: JSON.stringify(data),
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.detail || 'Failed'); }
+  return r.json();
+}
+
+export async function deleteNotification(id: string): Promise<void> {
+  await fetch(`${BASE}/notifications/${id}`, { method: 'DELETE', headers: headers() });
+}
+
+export async function testNotification(id: string): Promise<void> {
+  await fetch(`${BASE}/notifications/${id}/test`, { method: 'POST', headers: headers() });
 }

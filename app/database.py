@@ -19,10 +19,30 @@ engine = create_async_engine(
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
+async def migrate_db() -> None:
+    """Add new columns to existing tables safely (idempotent)."""
+    from sqlalchemy import text
+
+    new_columns = [
+        ("findings", "cvss_score", "FLOAT"),
+        ("findings", "cvss_vector", "VARCHAR(256)"),
+        ("scan_jobs", "tags", "VARCHAR(512)"),
+    ]
+    async with engine.begin() as conn:
+        for table, col, coltype in new_columns:
+            try:
+                await conn.execute(text(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {coltype}"
+                ))
+            except Exception:
+                pass
+
+
 async def init_db() -> None:
     """Create all tables (dev convenience — use Alembic in production)."""
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+    await migrate_db()
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

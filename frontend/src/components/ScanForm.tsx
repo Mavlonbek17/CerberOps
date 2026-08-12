@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Network, Radar, Globe, ArrowRight, Loader2, Sparkles, Lock, Search } from 'lucide-react';
 
 interface Props {
-  onSubmit: (target: string, scanners: string[], allowInternal: boolean, smartRecon: boolean) => void;
+  onSubmit: (target: string, scanners: string[], allowInternal: boolean, smartRecon: boolean, tags: string[]) => void;
   loading: boolean;
 }
 
@@ -47,6 +47,7 @@ export default function ScanForm({ onSubmit, loading }: Props) {
   const [scanners, setScanners] = useState<string[]>(['nmap', 'nuclei']);
   const [allowInternal, setAllowInternal] = useState(false);
   const [smartRecon, setSmartRecon] = useState(true);
+  const [tags, setTags] = useState<string[]>([]);
 
   const toggle = (id: string) =>
     setScanners((p) => (p.includes(id) ? p.filter((s) => s !== id) : [...p, id]));
@@ -54,7 +55,7 @@ export default function ScanForm({ onSubmit, loading }: Props) {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!target.trim() || scanners.length === 0) return;
-    onSubmit(target.trim(), scanners, allowInternal, smartRecon);
+    onSubmit(target.trim(), scanners, allowInternal, smartRecon, tags);
   };
 
   const ready = target.trim().length > 0 && scanners.length > 0 && !loading;
@@ -126,6 +127,34 @@ export default function ScanForm({ onSubmit, loading }: Props) {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* Tags input */}
+        <div className="space-y-1.5">
+          <label className="text-[13px] font-medium text-on-surface-variant">
+            Tags <span className="text-on-surface-variant/50 font-normal">(optional — press Enter to add)</span>
+          </label>
+          <div className="flex flex-wrap gap-2 p-3 bg-surface-container-low border border-outline-variant rounded-xl min-h-[48px]">
+            {tags.map(tag => (
+              <span key={tag} className="flex items-center gap-1 px-2.5 py-1 bg-primary/10 border border-primary/25 text-primary text-[12px] font-medium rounded-lg">
+                {tag}
+                <button type="button" onClick={() => setTags(t => t.filter(x => x !== tag))} className="hover:text-error cursor-pointer">×</button>
+              </span>
+            ))}
+            <input
+              type="text"
+              placeholder={tags.length === 0 ? "client-name, production, web-app..." : ""}
+              className="flex-1 min-w-[120px] bg-transparent text-[13px] text-on-background placeholder:text-on-surface-variant/40 focus:outline-none"
+              onKeyDown={(e) => {
+                if ((e.key === 'Enter' || e.key === ',') && e.currentTarget.value.trim()) {
+                  e.preventDefault();
+                  const val = e.currentTarget.value.trim().replace(/,/g, '');
+                  if (val && !tags.includes(val)) setTags(t => [...t, val]);
+                  e.currentTarget.value = '';
+                }
+              }}
+            />
           </div>
         </div>
 

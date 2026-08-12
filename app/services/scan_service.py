@@ -9,10 +9,12 @@ from sqlmodel import select
 from app.adapters import NmapScanner, NucleiScanner, ZapScanner
 from app.adapters.base import BaseScanner, RawFinding
 from app.core.exceptions import CerberOpsError
-from app.models import AiVerdict, Finding, Report, ScanJob, ScanStatus
+from app.models import AiVerdict, Finding, NotificationConfig, Report, ScanJob, ScanStatus
 from app.services.ai_remediation import generate_report
 from app.services.ai_triage import triage_findings
+from app.services.cvss_service import estimate_cvss
 from app.services.dedup_service import deduplicate
+from app.services.notification_service import dispatch_notification
 from app.services.smart_recon import plan_scan
 
 logger = logging.getLogger(__name__)
@@ -151,6 +153,18 @@ async def run_scan(job_id: str, session: AsyncSession) -> None:
 
     await session.commit()
 
+    # Compute CVSS scores for each finding
+    for finding in findings:
+        cves = (
+            [c.strip() for c in finding.cve_ids.split(",") if c.strip()]
+            if finding.cve_ids else []
+        )
+        score, vector = estimate_cvss(finding.severity.value, cves, finding.evidence)
+        finding.cvss_score = score
+        finding.cvss_vector = vector
+        session.add(finding)
+    await session.commit()
+
     job.progress = 90
     job.updated_at = datetime.now(UTC)
     session.add(job)
@@ -191,3 +205,24 @@ async def run_scan(job_id: str, session: AsyncSession) -> None:
     await session.commit()
 
     logger.info("Scan job %s completed with %d findings", job_id, len(findings))
+
+    # Send notifications
+    try:
+        nc_stmt = select(NotificationConfig).where(NotificationConfig.enabled == True)  # noqa: E712
+        nc_result = await session.execute(nc_stmt)
+        configs = nc_result.scalars().all()
+        critical_count = sum(1 for f in findings if f.severity.value == "critical")
+        for nc in configs:
+            events = [e.strip() for e in nc.events.split(",")]
+            if "scan_complete" in events:
+                await dispatch_notification(
+                    nc.type, nc.config, "scan_complete",
+                    job.target, len(findings), critical_count,
+                )
+            if "critical_found" in events and critical_count > 0:
+                await dispatch_notification(
+                    nc.type, nc.config, "critical_found",
+                    job.target, len(findings), critical_count,
+                )
+    except Exception:
+        logger.exception("Notification error after scan %s", job_id)
