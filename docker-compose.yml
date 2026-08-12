@@ -1,5 +1,7 @@
 # CerberOps — Docker Compose Orchestration
-# Usage: docker compose up -d
+# Usage: ./install.sh          (first time — installs everything)
+#        docker compose up -d  (subsequent starts)
+#        docker compose down   (stop)
 
 services:
   # ── FastAPI Backend ──────────────────────────────────────
@@ -10,10 +12,9 @@ services:
       - "8000:8000"
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://cerberops:changeme_in_production@postgres:5432/cerberops
+      - DATABASE_URL=postgresql+asyncpg://cerberops:cerberops_secret@postgres:5432/cerberops
       - REDIS_URL=redis://redis:6379/0
       - ZAP_API_URL=http://zap:8080
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     depends_on:
       postgres:
         condition: service_healthy
@@ -30,10 +31,9 @@ services:
     command: celery -A app.tasks.celery_app worker --loglevel=info -Q scans -c 2
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://cerberops:changeme_in_production@postgres:5432/cerberops
+      - DATABASE_URL=postgresql+asyncpg://cerberops:cerberops_secret@postgres:5432/cerberops
       - REDIS_URL=redis://redis:6379/0
       - ZAP_API_URL=http://zap:8080
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,7 +63,7 @@ services:
     container_name: cerberops-postgres
     environment:
       POSTGRES_USER: cerberops
-      POSTGRES_PASSWORD: changeme_in_production
+      POSTGRES_PASSWORD: cerberops_secret
       POSTGRES_DB: cerberops
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -95,20 +95,76 @@ services:
     networks:
       - cerberops
 
-  # ── OWASP ZAP (Daemon Mode) ─────────────────────────────
+  # ── OWASP ZAP (Daemon Mode) ──────────────────────────────
   zap:
     image: zaproxy/zap-stable:latest
     container_name: cerberops-zap
-    command: zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.disablekey=true -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    command: >
+      zap.sh -daemon
+      -host 0.0.0.0
+      -port 8080
+      -config api.disablekey=true
+      -config api.addrs.addr.name=.*
+      -config api.addrs.addr.regex=true
     ports:
       - "8080:8080"
     restart: unless-stopped
     networks:
       - cerberops
 
+  # ── Ollama (Local AI) ────────────────────────────────────
+  # Runs the LLM locally. The model is pulled on first start via
+  # the ollama-model-init one-shot container below.
+  # Uses host GPU automatically when available (NVIDIA/AMD/Apple Metal).
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cerberops-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - cerberops
+    # GPU support — Docker automatically uses available GPU if drivers present.
+    # On Apple Silicon this runs via CPU (Metal is not supported in Docker yet).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ── Ollama model pull (one-shot init) ────────────────────
+  # Runs once on first `docker compose up`, pulls the model,
+  # then exits cleanly. Subsequent starts are instant (model cached in volume).
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: cerberops-ollama-init
+    depends_on:
+      - ollama
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - cerberops
+    # MODEL is read from .env OLLAMA_MODEL, defaults to qwen2.5-coder:1.5b
+    entrypoint: >
+      /bin/sh -c "
+        echo 'Waiting for Ollama to be ready...';
+        until curl -s http://ollama:11434/api/tags > /dev/null 2>&1; do sleep 2; done;
+        MODEL=$${OLLAMA_MODEL:-qwen2.5-coder:1.5b};
+        echo \"Pulling model: $$MODEL (this downloads once)\";
+        ollama pull $$MODEL;
+        echo \"Model $$MODEL ready.\";
+      "
+    env_file: .env
+    restart: "no"
+
 volumes:
   pgdata:
   redisdata:
+  ollama_models:
 
 networks:
   cerberops:
