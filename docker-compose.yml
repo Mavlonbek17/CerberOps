@@ -1,0 +1,115 @@
+# CerberOps — Docker Compose Orchestration
+# Usage: docker compose up -d
+
+services:
+  # ── FastAPI Backend ──────────────────────────────────────
+  api:
+    build: .
+    container_name: cerberops-api
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://cerberops:changeme_in_production@postgres:5432/cerberops
+      - REDIS_URL=redis://redis:6379/0
+      - ZAP_API_URL=http://zap:8080
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - cerberops
+
+  # ── Celery Worker ────────────────────────────────────────
+  worker:
+    build: .
+    container_name: cerberops-worker
+    command: celery -A app.tasks.celery_app worker --loglevel=info -Q scans -c 2
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://cerberops:changeme_in_production@postgres:5432/cerberops
+      - REDIS_URL=redis://redis:6379/0
+      - ZAP_API_URL=http://zap:8080
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - cerberops
+
+  # ── React Frontend ───────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: cerberops-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - cerberops
+
+  # ── PostgreSQL ───────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cerberops-postgres
+    environment:
+      POSTGRES_USER: cerberops
+      POSTGRES_PASSWORD: changeme_in_production
+      POSTGRES_DB: cerberops
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cerberops"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - cerberops
+
+  # ── Redis ────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: cerberops-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - cerberops
+
+  # ── OWASP ZAP (Daemon Mode) ─────────────────────────────
+  zap:
+    image: zaproxy/zap-stable:latest
+    container_name: cerberops-zap
+    command: zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.disablekey=true -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - cerberops
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  cerberops:
+    driver: bridge
