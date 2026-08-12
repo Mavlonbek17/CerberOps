@@ -122,6 +122,11 @@ class Finding(SQLModel, table=True):
     cvss_score: float | None = Field(default=None)
     cvss_vector: str | None = Field(default=None, max_length=256)
 
+    # ── MITRE ATT&CK / Compliance / Baseline ──────────────────────
+    mitre_techniques: str | None = Field(default=None, max_length=256)  # comma-separated ATT&CK IDs e.g. "T1190,T1078"
+    owasp_category: str | None = Field(default=None, max_length=128)
+    is_new: bool = Field(default=True)  # baseline: True if not seen in previous completed scan of same target
+
     # ── AI False Positive Triage ─────────────────────────────────
     ai_verdict: AiVerdict = Field(
         default=AiVerdict.UNREVIEWED,
@@ -155,6 +160,7 @@ class Report(SQLModel, table=True):
         default_factory=_utcnow,
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+    threat_narrative: str | None = Field(default=None)
 
     scan_job: Optional["ScanJob"] = Relationship(back_populates="report")
 
@@ -197,3 +203,39 @@ class NotificationConfig(SQLModel, table=True):
         default_factory=_utcnow,
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+
+
+class Asset(SQLModel, table=True):
+    __tablename__ = "assets"
+    id: str = Field(default_factory=_new_id, primary_key=True, max_length=32)
+    target: str = Field(index=True, unique=True, max_length=2048)
+    tech_stack: str | None = Field(default=None, max_length=1024)  # comma-separated
+    open_ports: str | None = Field(default=None, max_length=512)  # comma-separated port numbers seen historically
+    first_seen: datetime = Field(default_factory=_utcnow, sa_column=Column(DateTime(timezone=True), nullable=False))
+    last_scanned: datetime = Field(default_factory=_utcnow, sa_column=Column(DateTime(timezone=True), nullable=False))
+    scan_count: int = Field(default=0)
+
+
+class Subdomain(SQLModel, table=True):
+    __tablename__ = "subdomains"
+    id: str = Field(default_factory=_new_id, primary_key=True, max_length=32)
+    asset_id: str = Field(foreign_key="assets.id", index=True, max_length=32)
+    subdomain: str = Field(index=True, max_length=512)
+    ip_address: str | None = Field(default=None, max_length=64)
+    is_alive: bool = Field(default=False)
+    status_code: int | None = Field(default=None)
+    title: str | None = Field(default=None, max_length=512)
+    tech: str | None = Field(default=None, max_length=512)  # comma-separated
+    discovered_at: datetime = Field(default_factory=_utcnow, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class CveEnrichment(SQLModel, table=True):
+    __tablename__ = "cve_enrichment"
+    cve_id: str = Field(primary_key=True, max_length=32)
+    description: str = Field(default="")
+    cvss_score: float | None = Field(default=None)
+    cvss_vector: str | None = Field(default=None, max_length=256)
+    epss_score: float | None = Field(default=None)
+    published_date: str | None = Field(default=None, max_length=32)
+    reference_urls: str | None = Field(default=None)  # newline-separated
+    fetched_at: datetime = Field(default_factory=_utcnow, sa_column=Column(DateTime(timezone=True), nullable=False))

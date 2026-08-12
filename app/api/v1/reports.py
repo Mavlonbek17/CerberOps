@@ -54,6 +54,7 @@ async def get_report(
             remediation_plan=report.remediation_plan,
             ai_model_used=report.ai_model_used,
             generated_at=report.generated_at,
+            threat_narrative=report.threat_narrative,
         )
 
     # Generate new report
@@ -90,4 +91,5 @@ async def get_report(
         remediation_plan=report.remediation_plan,
         ai_model_used=report.ai_model_used,
         generated_at=report.generated_at,
+        threat_narrative=report.threat_narrative,
     )

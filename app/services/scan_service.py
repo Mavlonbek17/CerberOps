@@ -10,10 +10,16 @@ from app.adapters import NmapScanner, NucleiScanner, ZapScanner
 from app.adapters.base import BaseScanner, RawFinding
 from app.core.exceptions import CerberOpsError
 from app.models import AiVerdict, Finding, NotificationConfig, Report, ScanJob, ScanStatus
+from app.services.ai_orchestrator import generate_threat_narrative
 from app.services.ai_remediation import generate_report
 from app.services.ai_triage import triage_findings
+from app.services.asset_service import run_recon_and_update_asset
+from app.services.baseline_service import mark_new_findings
+from app.services.compliance_service import classify_finding, compute_compliance_summary
+from app.services.cve_enrichment_service import enrich_cve
 from app.services.cvss_service import estimate_cvss
 from app.services.dedup_service import deduplicate
+from app.services.mitre_mapping import map_finding_to_mitre
 from app.services.notification_service import dispatch_notification
 from app.services.smart_recon import plan_scan
 
@@ -70,6 +76,15 @@ async def run_scan(job_id: str, session: AsyncSession) -> None:
             logger.info("Smart Recon plan for %s: tags=%s", job.target, nuclei_tags)
         except Exception:
             logger.exception("Smart Recon failed for %s — continuing unfiltered", job.target)
+
+    # ── Asset Intelligence (subdomain enum + tech fingerprint) ────────
+    asset_summary: dict = {"subdomains": [], "tech_stack": []}
+    try:
+        asset_summary = await run_recon_and_update_asset(job.target, session)
+        if asset_summary.get("subdomains"):
+            logger.info("Discovered %d subdomains for %s", len(asset_summary["subdomains"]), job.target)
+    except Exception:
+        logger.exception("Asset recon failed for %s — continuing without it", job.target)
 
     for idx, scanner_name in enumerate(requested_scanners):
         scanner_cls = _SCANNERS.get(scanner_name)
@@ -165,6 +180,33 @@ async def run_scan(job_id: str, session: AsyncSession) -> None:
         session.add(finding)
     await session.commit()
 
+    # ── MITRE ATT&CK + Compliance tagging ─────────────────────────────
+    for finding in findings:
+        matches = map_finding_to_mitre(finding.title, finding.description)
+        if matches:
+            finding.mitre_techniques = ",".join(m[0] for m in matches)
+        finding.owasp_category = classify_finding(finding.title, finding.description)
+        session.add(finding)
+    await session.commit()
+
+    # ── CVE Enrichment (cached — safe to call even with many findings) ─
+    for finding in findings:
+        if finding.cve_ids:
+            for cve_id in finding.cve_ids.split(","):
+                cve_id = cve_id.strip()
+                if cve_id:
+                    try:
+                        await enrich_cve(cve_id, session)
+                    except Exception:
+                        logger.warning("CVE enrichment failed for %s", cve_id)
+
+    # ── Baseline diff (new vs resolved vs previous scan) ──────────────
+    baseline_summary: dict = {"previous_scan_id": None, "new_count": len(findings), "resolved": []}
+    try:
+        baseline_summary = await mark_new_findings(job, findings, session)
+    except Exception:
+        logger.exception("Baseline diff failed for job %s", job_id)
+
     job.progress = 90
     job.updated_at = datetime.now(UTC)
     session.add(job)
@@ -186,6 +228,38 @@ async def run_scan(job_id: str, session: AsyncSession) -> None:
         )
         session.add(report)
         await session.commit()
+        await session.refresh(report)
+
+        # ── AI Orchestrator — unified threat narrative using all enriched context ──
+        try:
+            seen_techniques: dict[str, dict] = {}
+            for f in findings:
+                if f.mitre_techniques:
+                    for tid in f.mitre_techniques.split(","):
+                        tid = tid.strip()
+                        if not tid:
+                            continue
+                        if tid not in seen_techniques:
+                            match = next((m for m in map_finding_to_mitre(f.title, f.description) if m[0] == tid), None)
+                            seen_techniques[tid] = {
+                                "technique_id": tid,
+                                "technique_name": match[1] if match else tid,
+                                "tactic": match[2] if match else "Unknown",
+                                "finding_count": 0,
+                            }
+                        seen_techniques[tid]["finding_count"] += 1
+            mitre_summary = list(seen_techniques.values())
+
+            compliance_summary = compute_compliance_summary(findings)
+
+            narrative = await generate_threat_narrative(
+                job.target, findings, asset_summary, baseline_summary, mitre_summary, compliance_summary,
+            )
+            report.threat_narrative = narrative
+            session.add(report)
+            await session.commit()
+        except Exception:
+            logger.exception("AI orchestrator failed for job %s", job_id)
     except Exception:
         logger.exception("AI report generation failed for job %s", job_id)
         await session.rollback()

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   Calendar,
@@ -11,11 +11,22 @@ import {
   FileText,
   Loader2,
   MessageSquare,
+  Shield,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
-import type { Finding, HealthCheck, ScanDetail, ScanSummary, Severity } from '../types';
-import { getExportUrl } from '../api/client';
+import type {
+  BaselineResult,
+  ComplianceResult,
+  Finding,
+  HealthCheck,
+  MitreResult,
+  ScanDetail,
+  ScanSummary,
+  Severity,
+  VerifyResult,
+} from '../types';
+import { getBaseline, getCompliance, getExportUrl, getMitre, verifyFinding } from '../api/client';
 import ChatPanel from './ChatPanel';
 import PocViewer from './PocViewer';
 
@@ -27,7 +38,7 @@ interface Props {
   onNavigateToChat?: () => void;
 }
 
-type Tab = 'overview' | 'findings' | 'chat' | 'scheduler';
+type Tab = 'overview' | 'findings' | 'intelligence' | 'chat' | 'scheduler';
 
 const SEV_ORDER: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
@@ -70,9 +81,21 @@ function SmartReconBanner({ scan }: { scan: ScanDetail }) {
 export default function LiveResults({ scan, health, scans, onViewReport, onNavigateToChat }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [showFiltered, setShowFiltered] = useState(false);
+  const [verifyResults, setVerifyResults] = useState<Record<string, VerifyResult>>({});
+  const [baseline, setBaseline] = useState<BaselineResult | null>(null);
+  const [mitre, setMitre] = useState<MitreResult | null>(null);
+  const [compliance, setCompliance] = useState<ComplianceResult | null>(null);
 
   const scannerCount = health ? Object.values(health.scanners).filter(Boolean).length : 0;
   const isRunning = scan && ['queued', 'running', 'parsing', 'analyzing'].includes(scan.status);
+
+  useEffect(() => {
+    if (tab === 'intelligence' && scan?.status === 'completed') {
+      getBaseline(scan.id).then(setBaseline).catch(() => setBaseline(null));
+      getMitre(scan.id).then(setMitre).catch(() => setMitre(null));
+      getCompliance(scan.id).then(setCompliance).catch(() => setCompliance(null));
+    }
+  }, [tab, scan?.id, scan?.status]);
 
   const orderedFindings = useMemo(
     () => (scan ? [...scan.findings].sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity)) : []),
@@ -85,10 +108,11 @@ export default function LiveResults({ scan, health, scans, onViewReport, onNavig
   const hiddenCount = orderedFindings.length - visibleFindings.length;
 
   const tabs: { id: Tab; label: string; icon: typeof FileText }[] = [
-    { id: 'overview',  label: 'Overview',  icon: FileText },
-    { id: 'findings',  label: `Findings (${visibleFindings.length})`, icon: BarChart3 },
-    { id: 'chat',      label: 'AI Chat',   icon: MessageSquare },
-    { id: 'scheduler', label: 'Scheduler', icon: Calendar },
+    { id: 'overview',     label: 'Overview',     icon: FileText },
+    { id: 'findings',     label: `Findings (${visibleFindings.length})`, icon: BarChart3 },
+    { id: 'intelligence', label: 'Intel',        icon: Shield },
+    { id: 'chat',         label: 'AI Chat',      icon: MessageSquare },
+    { id: 'scheduler',    label: 'Scheduler',    icon: Calendar },
   ];
 
   return (
@@ -227,6 +251,9 @@ export default function LiveResults({ scan, health, scans, onViewReport, onNavig
                           CVSS {f.cvss_score.toFixed(1)}
                         </span>
                       )}
+                      {f.is_new && (
+                        <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#3fb950]/15 text-[#3fb950] uppercase tracking-wide">New</span>
+                      )}
                       <h4 className="text-[14px] font-semibold text-on-background">{f.title}</h4>
                       <AiVerdictBadge finding={f} />
                     </div>
@@ -240,10 +267,128 @@ export default function LiveResults({ scan, health, scans, onViewReport, onNavig
                       ))}
                     </div>
                   )}
-                  {canPoc && <PocViewer findingId={f.id} hasPoc={f.has_poc} />}
+                  {f.mitre_techniques.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {f.mitre_techniques.map(t => (
+                        <span key={t} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#bc8cff]/10 border border-[#bc8cff]/25 text-[#bc8cff]">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                  {canPoc && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <PocViewer findingId={f.id} hasPoc={f.has_poc} />
+                      <button
+                        onClick={async () => {
+                          try {
+                            const result = await verifyFinding(f.id);
+                            setVerifyResults(v => ({ ...v, [f.id]: result }));
+                          } catch (e) { console.error(e); }
+                        }}
+                        className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-background hover:border-outline transition-colors cursor-pointer"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" /> Verify Finding
+                      </button>
+                    </div>
+                  )}
+                  {canPoc && verifyResults[f.id] && (
+                    <div className={`text-[12px] px-3 py-2 rounded-lg mt-2 ${verifyResults[f.id].verified ? 'bg-[#3fb950]/8 text-[#3fb950] border border-[#3fb950]/25' : 'bg-surface-container-high text-on-surface-variant border border-outline-variant'}`}>
+                      {verifyResults[f.id].details}
+                    </div>
+                  )}
                 </article>
               );
             })}
+          </div>
+        ) : tab === 'intelligence' ? (
+          <div className="space-y-5">
+            {/* Baseline */}
+            {baseline && (
+              <div className="border border-outline-variant rounded-lg overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-high">
+                  <span className="text-[13px] font-semibold text-on-background">Baseline Comparison</span>
+                </div>
+                <div className="p-4 grid grid-cols-3 gap-3 text-center">
+                  <div>
+                    <div className="text-lg font-bold text-[#3fb950]">{baseline.new_findings.length}</div>
+                    <div className="text-[11px] text-on-surface-variant uppercase">New</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-on-surface-variant">{baseline.unchanged_count}</div>
+                    <div className="text-[11px] text-on-surface-variant uppercase">Unchanged</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-[#f85149]">{baseline.resolved_findings.length}</div>
+                    <div className="text-[11px] text-on-surface-variant uppercase">Resolved</div>
+                  </div>
+                </div>
+                {!baseline.has_baseline && (
+                  <div className="px-4 pb-4 text-[12px] text-on-surface-variant">No previous scan of this target to compare against.</div>
+                )}
+              </div>
+            )}
+
+            {/* MITRE ATT&CK */}
+            {mitre && mitre.techniques.length > 0 && (
+              <div className="border border-outline-variant rounded-lg overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-high">
+                  <span className="text-[13px] font-semibold text-on-background">MITRE ATT&amp;CK Techniques</span>
+                </div>
+                <div className="divide-y divide-outline-variant/60">
+                  {mitre.techniques.map(t => (
+                    <div key={t.technique_id} className="flex items-center gap-3 px-4 py-3 text-[13px]">
+                      <span className="font-mono font-semibold text-[#bc8cff] shrink-0">{t.technique_id}</span>
+                      <span className="text-on-background flex-1">{t.technique_name}</span>
+                      <span className="text-[11px] text-on-surface-variant">{t.tactic}</span>
+                      <span className="text-[11px] font-medium text-on-surface-variant shrink-0">{t.finding_count} finding(s)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Compliance */}
+            {compliance && (
+              <div className="border border-outline-variant rounded-lg overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-high">
+                  <span className="text-[13px] font-semibold text-on-background">Compliance Exposure</span>
+                </div>
+                <div className="p-4 space-y-4">
+                  {([
+                    ['OWASP Top 10', compliance.owasp_top10],
+                    ['PCI-DSS', compliance.pci_dss],
+                    ['NIST 800-53', compliance.nist_800_53],
+                    ['ISO 27001', compliance.iso_27001],
+                  ] as const).map(([label, items]) => items.length > 0 && (
+                    <div key={label}>
+                      <div className="text-[12px] font-semibold text-on-surface-variant uppercase tracking-wide mb-2">{label}</div>
+                      <div className="space-y-1.5">
+                        {items.map(item => (
+                          <div key={item.framework_id} className="flex items-center gap-2 text-[13px]">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                              item.max_severity === 'critical' ? 'bg-error' :
+                              item.max_severity === 'high' ? 'bg-orange' :
+                              item.max_severity === 'medium' ? 'bg-tertiary' : 'bg-outline-variant'
+                            }`} />
+                            <span className="font-medium text-on-background">{item.framework_id}</span>
+                            <span className="text-on-surface-variant text-[12px] flex-1">{item.description}</span>
+                            <span className="text-[11px] text-on-surface-variant">{item.finding_count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {Object.values(compliance).every(arr => arr.length === 0) && (
+                    <p className="text-[13px] text-on-surface-variant">No compliance-relevant findings detected.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!baseline && !mitre && !compliance && (
+              <div className="text-center text-on-surface-variant py-16 text-[13px]">
+                {scan.status === 'completed' ? 'Loading intelligence data…' : 'Intelligence available after scan completes.'}
+              </div>
+            )}
           </div>
         ) : tab === 'chat' ? (
           scan.status === 'completed' ? (

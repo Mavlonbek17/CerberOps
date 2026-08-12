@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, Clock, FileDown } from 'lucide-react';
+import { ArrowLeft, Brain, Clock, FileDown, Sparkles } from 'lucide-react';
 import type { Report } from '../types';
 
 interface Props {
@@ -50,6 +50,20 @@ export default function ReportView({ report, onBack }: Props) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        {report.threat_narrative && (
+          <section>
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-1 h-6 rounded-full bg-primary" />
+              <h3 className="text-base font-headline font-semibold uppercase tracking-wider text-primary flex items-center gap-2">
+                <Sparkles className="w-4 h-4" /> AI Threat Briefing
+              </h3>
+            </div>
+            <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap pl-4">{report.threat_narrative}</p>
+          </section>
+        )}
+
+        {report.threat_narrative && <div className="border-t border-outline-variant/50" />}
+
         <section>
           <div className="flex items-center gap-2.5 mb-3">
             <div className="w-1 h-6 rounded-full bg-secondary" />

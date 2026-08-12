@@ -59,6 +59,12 @@ def _finding_to_out(f: Finding) -> FindingOut:
         has_poc=bool(f.poc_code),
         cvss_score=f.cvss_score,
         cvss_vector=f.cvss_vector,
+        mitre_techniques=(
+            [t.strip() for t in f.mitre_techniques.split(",") if t.strip()]
+            if f.mitre_techniques else []
+        ),
+        owasp_category=f.owasp_category,
+        is_new=f.is_new,
     )
 
 

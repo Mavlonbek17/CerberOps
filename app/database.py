@@ -27,6 +27,10 @@ async def migrate_db() -> None:
         ("findings", "cvss_score", "FLOAT"),
         ("findings", "cvss_vector", "VARCHAR(256)"),
         ("scan_jobs", "tags", "VARCHAR(512)"),
+        ("findings", "mitre_techniques", "VARCHAR(256)"),
+        ("findings", "owasp_category", "VARCHAR(128)"),
+        ("findings", "is_new", "BOOLEAN DEFAULT true"),
+        ("reports", "threat_narrative", "TEXT"),
     ]
     async with engine.begin() as conn:
         for table, col, coltype in new_columns:

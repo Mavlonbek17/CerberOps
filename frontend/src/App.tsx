@@ -17,6 +17,7 @@ import ReportView from './components/ReportView';
 import SideNav, { type NavView } from './components/SideNav';
 import RightRail from './components/RightRail';
 import NetworkMap from './components/NetworkMap';
+import AssetsView from './components/AssetsView';
 import SettingsView from './components/SettingsView';
 import ScanHistoryView from './components/ScanHistoryView';
 import LogsView from './components/LogsView';
@@ -364,6 +365,13 @@ export default function App() {
                 selectedScan={selectedScan}
                 onSelectScan={handleSelectScan}
               />
+            </div>
+          )}
+
+          {/* ── ASSETS ── */}
+          {currentView === 'assets' && (
+            <div className="px-6 py-6">
+              <AssetsView />
             </div>
           )}
 

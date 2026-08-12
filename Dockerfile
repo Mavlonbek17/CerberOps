@@ -27,6 +27,25 @@ RUN ARCH=$(dpkg --print-architecture) && \
     chmod +x /usr/local/bin/nuclei && \
     rm /tmp/nuclei.zip
 
+# Install Subfinder (subdomain enumeration)
+ARG SUBFINDER_VERSION=2.6.6
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget -q "https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_${ARCH}.zip" \
+    -O /tmp/subfinder.zip && \
+    unzip /tmp/subfinder.zip -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/subfinder && \
+    rm /tmp/subfinder.zip
+
+# Install httpx (ProjectDiscovery CLI tool for tech fingerprinting —
+# NOT the Python httpx pip library used elsewhere in this codebase)
+ARG HTTPX_VERSION=1.6.9
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget -q "https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_${ARCH}.zip" \
+    -O /tmp/httpx.zip && \
+    unzip /tmp/httpx.zip -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/httpx && \
+    rm /tmp/httpx.zip
+
 # Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

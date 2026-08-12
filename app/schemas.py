@@ -64,6 +64,9 @@ class FindingOut(BaseModel):
     has_poc: bool = False
     cvss_score: float | None = None
     cvss_vector: str | None = None
+    mitre_techniques: list[str] = []
+    owasp_category: str | None = None
+    is_new: bool = True
 
 
 class ScanDetail(BaseModel):
@@ -109,6 +112,7 @@ class ReportOut(BaseModel):
     remediation_plan: str
     ai_model_used: str
     generated_at: datetime
+    threat_narrative: str | None = None
 
 
 class HealthCheck(BaseModel):
@@ -201,3 +205,88 @@ class NotificationConfigOut(BaseModel):
     events: list[str]
     enabled: bool
     created_at: datetime
+
+
+# ── Asset Intelligence / MITRE / Compliance / CVE Enrichment ──────
+
+class SubdomainOut(BaseModel):
+    subdomain: str
+    ip_address: str | None = None
+    is_alive: bool
+    status_code: int | None = None
+    title: str | None = None
+    tech: list[str] = []
+    discovered_at: datetime
+
+
+class AssetSummary(BaseModel):
+    id: str
+    target: str
+    tech_stack: list[str] = []
+    subdomain_count: int = 0
+    scan_count: int = 0
+    first_seen: datetime
+    last_scanned: datetime
+
+
+class AssetDetail(BaseModel):
+    id: str
+    target: str
+    tech_stack: list[str] = []
+    open_ports: list[str] = []
+    subdomains: list[SubdomainOut] = []
+    scan_count: int = 0
+    first_seen: datetime
+    last_scanned: datetime
+
+
+class BaselineOut(BaseModel):
+    has_baseline: bool
+    previous_scan_id: str | None = None
+    new_findings: list[FindingOut] = []
+    resolved_findings: list[dict] = []  # {title, severity, host}
+    unchanged_count: int = 0
+
+
+class MitreTechnique(BaseModel):
+    technique_id: str
+    technique_name: str
+    tactic: str
+    finding_ids: list[str] = []
+    finding_count: int = 0
+
+
+class MitreOut(BaseModel):
+    techniques: list[MitreTechnique] = []
+
+
+class ComplianceItem(BaseModel):
+    framework_id: str
+    description: str
+    finding_count: int = 0
+    max_severity: str = "info"
+
+
+class ComplianceOut(BaseModel):
+    owasp_top10: list[ComplianceItem] = []
+    pci_dss: list[ComplianceItem] = []
+    nist_800_53: list[ComplianceItem] = []
+    iso_27001: list[ComplianceItem] = []
+
+
+class CveEnrichmentOut(BaseModel):
+    cve_id: str
+    description: str
+    cvss_score: float | None = None
+    cvss_vector: str | None = None
+    epss_score: float | None = None
+    published_date: str | None = None
+    reference_urls: list[str] = []
+
+
+class VerifyResult(BaseModel):
+    finding_id: str
+    verified: bool
+    method: str
+    details: str
+    verified_at: datetime

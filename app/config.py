@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     # ── Scheduler ─────────────────────────────────────────────────
     scheduler_enabled: bool = True
 
+    # ── CVE Enrichment ────────────────────────────────────────────
+    nvd_api_key: str = ""  # optional — raises NVD rate limit from 5/30s to 50/30s
+    cve_enrichment_enabled: bool = True
+
+    # ── Recon ─────────────────────────────────────────────────────
+    subdomain_enum_enabled: bool = True
+    tech_fingerprint_enabled: bool = True
+    max_subdomains_scanned: int = 15  # cap to keep scans fast
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
 
 

@@ -1,6 +1,12 @@
 import type {
+  AssetDetail,
+  AssetSummary,
+  BaselineResult,
   ChatMessage,
+  ComplianceResult,
+  CveInfo,
   HealthCheck,
+  MitreResult,
   NotificationConfig,
   PocResult,
   Report,
@@ -8,6 +14,7 @@ import type {
   ScanDetail,
   ScanSummary,
   ScheduledScan,
+  VerifyResult,
 } from '../types';
 
 const BASE = '/api/v1';
@@ -157,4 +164,44 @@ export async function deleteNotification(id: string): Promise<void> {
 
 export async function testNotification(id: string): Promise<void> {
   await fetch(`${BASE}/notifications/${id}/test`, { method: 'POST', headers: headers() });
+}
+
+// Assets
+export async function listAssets(): Promise<AssetSummary[]> {
+  const r = await fetch(`${BASE}/assets`, { headers: headers() });
+  return r.json();
+}
+
+export async function getAsset(assetId: string): Promise<AssetDetail> {
+  const r = await fetch(`${BASE}/assets/${assetId}`, { headers: headers() });
+  if (!r.ok) throw new Error('Asset not found');
+  return r.json();
+}
+
+// Intelligence
+export async function getBaseline(jobId: string): Promise<BaselineResult> {
+  const r = await fetch(`${BASE}/scan/${jobId}/baseline`, { headers: headers() });
+  return r.json();
+}
+
+export async function getMitre(jobId: string): Promise<MitreResult> {
+  const r = await fetch(`${BASE}/scan/${jobId}/mitre`, { headers: headers() });
+  return r.json();
+}
+
+export async function getCompliance(jobId: string): Promise<ComplianceResult> {
+  const r = await fetch(`${BASE}/scan/${jobId}/compliance`, { headers: headers() });
+  return r.json();
+}
+
+export async function getCveInfo(cveId: string): Promise<CveInfo> {
+  const r = await fetch(`${BASE}/cve/${cveId}`, { headers: headers() });
+  if (!r.ok) throw new Error('CVE info not available');
+  return r.json();
+}
+
+export async function verifyFinding(findingId: string): Promise<VerifyResult> {
+  const r = await fetch(`${BASE}/findings/${findingId}/verify`, { method: 'POST', headers: headers() });
+  if (!r.ok) throw new Error('Verification failed');
+  return r.json();
 }

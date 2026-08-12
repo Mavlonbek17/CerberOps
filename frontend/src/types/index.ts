@@ -30,6 +30,9 @@ export interface Finding {
   has_poc: boolean;
   cvss_score: number | null;
   cvss_vector: string | null;
+  mitre_techniques: string[];
+  owasp_category: string | null;
+  is_new: boolean;
 }
 
 export interface ScanDetail {
@@ -70,6 +73,7 @@ export interface Report {
   remediation_plan: string;
   ai_model_used: string;
   generated_at: string;
+  threat_narrative: string | null;
 }
 
 export interface HealthCheck {
@@ -115,4 +119,87 @@ export interface NotificationConfig {
   events: string[];
   enabled: boolean;
   created_at: string;
+}
+
+export interface SubdomainInfo {
+  subdomain: string;
+  ip_address: string | null;
+  is_alive: boolean;
+  status_code: number | null;
+  title: string | null;
+  tech: string[];
+  discovered_at: string;
+}
+
+export interface AssetSummary {
+  id: string;
+  target: string;
+  tech_stack: string[];
+  subdomain_count: number;
+  scan_count: number;
+  first_seen: string;
+  last_scanned: string;
+}
+
+export interface AssetDetail {
+  id: string;
+  target: string;
+  tech_stack: string[];
+  open_ports: string[];
+  subdomains: SubdomainInfo[];
+  scan_count: number;
+  first_seen: string;
+  last_scanned: string;
+}
+
+export interface BaselineResult {
+  has_baseline: boolean;
+  previous_scan_id: string | null;
+  new_findings: Finding[];
+  resolved_findings: { title: string; severity: string; host: string }[];
+  unchanged_count: number;
+}
+
+export interface MitreTechnique {
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  finding_ids: string[];
+  finding_count: number;
+}
+
+export interface MitreResult {
+  techniques: MitreTechnique[];
+}
+
+export interface ComplianceItem {
+  framework_id: string;
+  description: string;
+  finding_count: number;
+  max_severity: string;
+}
+
+export interface ComplianceResult {
+  owasp_top10: ComplianceItem[];
+  pci_dss: ComplianceItem[];
+  nist_800_53: ComplianceItem[];
+  iso_27001: ComplianceItem[];
+}
+
+export interface CveInfo {
+  cve_id: string;
+  description: string;
+  cvss_score: number | null;
+  cvss_vector: string | null;
+  epss_score: number | null;
+  published_date: string | null;
+  reference_urls: string[];
+}
+
+export interface VerifyResult {
+  finding_id: string;
+  verified: boolean;
+  method: string;
+  details: string;
+  verified_at: string;
 }
