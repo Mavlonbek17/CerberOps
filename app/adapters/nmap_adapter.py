@@ -105,17 +105,23 @@ class NmapScanner(BaseScanner):
                 host = host[len(prefix):]
         host = host.rstrip("/").split("/")[0]
 
-        ports = str(options.get("ports", "")) or "1-10000"
+        ports = str(options.get("ports", "")) or "--top-ports 100"
         cmd = [
             "nmap",
             "-sV",                # Service/version detection
             "--open",             # Only show open ports
             "-T4",                # Aggressive timing
-            "-p", ports,
+            "--host-timeout", "120s",
+        ]
+        if ports.startswith("--"):
+            cmd.extend(ports.split())
+        else:
+            cmd.extend(["-p", ports])
+        cmd.extend([
             "-oX", xml_path,      # XML output
             "--no-stylesheet",
             host,
-        ]
+        ])
         return cmd
 
     def _parse_xml(self, xml_content: str) -> list[RawFinding]:

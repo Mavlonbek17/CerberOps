@@ -8,15 +8,15 @@ Design principles applied:
   every prompt so the model doesn't rely on potentially stale training data
 """
 
-import json
 import logging
-
-import httpx
 
 from app.config import settings
 from app.models import Finding
+from app.services.ollama_client import check_ollama_available, generate_json, list_models, to_str
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["check_ollama_available", "generate_report", "list_models"]
 
 # ── System prompt: strict guardrails ─────────────────────────────────────────
 _SYSTEM_PROMPT = """\
@@ -149,29 +149,6 @@ def _format_findings(findings: list[Finding]) -> str:
     return "\n\n".join(lines)
 
 
-async def check_ollama_available() -> bool:
-    """Return True if Ollama is reachable."""
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{settings.ollama_base_url}/api/tags")
-            return r.status_code == 200
-    except (httpx.ConnectError, httpx.TimeoutException):
-        return False
-
-
-async def list_models() -> list[str]:
-    """List available models in the local Ollama instance."""
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{settings.ollama_base_url}/api/tags")
-            if r.status_code == 200:
-                models = r.json().get("models", [])
-                return [m["name"] for m in models]
-    except Exception:
-        pass
-    return []
-
-
 async def generate_report(
     target: str,
     findings: list[Finding],
@@ -216,79 +193,25 @@ async def generate_report(
         logger.warning("Ollama unavailable — falling back to template report")
         return _fallback_report(target, findings)
 
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout=180.0)) as client:
-            r = await client.post(
-                f"{settings.ollama_base_url}/api/generate",
-                json={
-                    "model": model,
-                    "system": _SYSTEM_PROMPT,
-                    "prompt": prompt,
-                    "stream": False,
-                    "format": "json",
-                    "options": {
-                        "temperature": 0.1,   # Near-deterministic: facts not creativity
-                        "top_p": 0.9,         # Slightly constrained sampling
-                        "num_predict": 2048,
-                        "repeat_penalty": 1.1, # Discourage repetitive output
-                    },
-                },
-            )
+    parsed = await generate_json(
+        prompt=prompt,
+        system=_SYSTEM_PROMPT,
+        model=model,
+        temperature=0.1,     # Near-deterministic: facts not creativity
+        num_predict=2048,
+        timeout=180.0,
+    )
 
-            if r.status_code != 200:
-                logger.error("Ollama returned %d: %s", r.status_code, r.text[:300])
-                return _fallback_report(target, findings)
-
-            body = r.json()
-            response_text = body.get("response", "")
-
-            try:
-                parsed = json.loads(response_text)
-                return {
-                    "executive_summary": _to_str(parsed.get("executive_summary", "")),
-                    "technical_details": _to_str(parsed.get("technical_details", "")),
-                    "remediation_plan": _to_str(parsed.get("remediation_plan", "")),
-                    "ai_model_used": model,
-                }
-            except json.JSONDecodeError:
-                # Model returned plain text despite format=json — still usable
-                logger.warning("Model returned non-JSON; using raw text as report")
-                return {
-                    "executive_summary": response_text[:600],
-                    "technical_details": response_text,
-                    "remediation_plan": "See technical details above for full analysis.",
-                    "ai_model_used": model,
-                }
-
-    except (httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.error("Ollama request failed: %s", exc)
+    if parsed is None:
+        logger.warning("Ollama call failed or returned non-JSON; using fallback report")
         return _fallback_report(target, findings)
 
-
-def _to_str(val: object) -> str:
-    """Coerce any JSON value to a plain string for database storage."""
-    if isinstance(val, str):
-        return val
-    if isinstance(val, list):
-        parts: list[str] = []
-        for i, item in enumerate(val, 1):
-            if isinstance(item, dict):
-                step = item.get("step", item.get("title", item.get("name", "")))
-                desc = item.get("description", item.get("detail", ""))
-                cmds = item.get("commands", item.get("command", []))
-                if isinstance(cmds, str):
-                    cmds = [cmds]
-                line = f"{i}. {step}: {desc}" if step else f"{i}. {desc}"
-                if cmds:
-                    line += "\n   " + "\n   ".join(str(c) for c in cmds)
-                parts.append(line)
-            else:
-                parts.append(f"{i}. {item}")
-        return "\n".join(parts)
-    if isinstance(val, dict):
-        # Flatten dict to readable key: value lines
-        return "\n".join(f"{k}: {v}" for k, v in val.items())
-    return str(val)
+    return {
+        "executive_summary": to_str(parsed.get("executive_summary", "")),
+        "technical_details": to_str(parsed.get("technical_details", "")),
+        "remediation_plan": to_str(parsed.get("remediation_plan", "")),
+        "ai_model_used": model,
+    }
 
 
 def _fallback_report(target: str, findings: list[Finding]) -> dict[str, str]:

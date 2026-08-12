@@ -1,5 +1,6 @@
 export type ScanStatus = 'queued' | 'running' | 'parsing' | 'analyzing' | 'completed' | 'failed' | 'cancelled';
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+export type AiVerdict = 'unreviewed' | 'confirmed' | 'likely_false_positive';
 
 export interface ScanCreated {
   job_id: string;
@@ -24,6 +25,9 @@ export interface Finding {
   remediation: string | null;
   is_duplicate: boolean;
   created_at: string;
+  ai_verdict: AiVerdict;
+  ai_triage_notes: string | null;
+  has_poc: boolean;
 }
 
 export interface ScanDetail {
@@ -39,6 +43,9 @@ export interface ScanDetail {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  smart_recon: boolean;
+  recon_summary: string | null;
+  ai_scan_plan: string | null;
 }
 
 export interface ScanSummary {
@@ -47,6 +54,7 @@ export interface ScanSummary {
   status: ScanStatus;
   scanners: string[];
   findings_count: number;
+  progress?: number;
   created_at: string;
 }
 
@@ -66,4 +74,17 @@ export interface HealthCheck {
   scanners: Record<string, boolean>;
   ollama_available: boolean;
   database: boolean;
+}
+
+export interface PocResult {
+  finding_id: string;
+  poc_code: string;
+  poc_explanation: string;
+  ai_model_used: string;
+  generated_at: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }

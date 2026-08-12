@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, Clock } from 'lucide-react';
+import { ArrowLeft, Brain, Clock, FileDown } from 'lucide-react';
 import type { Report } from '../types';
 
 interface Props {
@@ -8,53 +8,80 @@ interface Props {
 
 export default function ReportView({ report, onBack }: Props) {
   return (
-    <div className="bg-[var(--bg-card)] rounded-lg border border-[var(--border)]">
-      <div className="p-4 border-b border-[var(--border)]">
-        <div className="flex items-center justify-between">
+    <section className="bg-surface-container-low border border-outline-variant/50 rounded-md overflow-hidden h-full flex flex-col">
+      <div className="px-4 py-3 border-b border-outline-variant/50 flex items-center justify-between shrink-0 bg-surface-container-high">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-sm font-label text-on-surface-variant hover:text-on-background transition-colors cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to findings
+        </button>
+        <div className="flex items-center gap-5 text-sm font-label text-on-surface-variant">
+          <span className="flex items-center gap-1.5">
+            <Brain className="w-4 h-4 text-secondary" />
+            {report.ai_model_used}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Clock className="w-4 h-4" />
+            {new Date(report.generated_at).toLocaleString()}
+          </span>
           <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            onClick={() => {
+              const blob = new Blob(
+                [
+                  `# Security Report\n\n## Executive Summary\n${report.executive_summary}\n\n## Technical Details\n${report.technical_details}\n\n## Remediation Plan\n${report.remediation_plan}`,
+                ],
+                { type: 'text/markdown' },
+              );
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `cerberops-report-${report.scan_job_id.slice(0, 8)}.md`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="flex items-center gap-1.5 text-secondary hover:text-secondary-fixed-dim transition-colors cursor-pointer font-medium"
           >
-            <ArrowLeft className="w-4 h-4" />
-            Back to findings
+            <FileDown className="w-4 h-4" />
+            Export
           </button>
-          <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)]">
-            <span className="flex items-center gap-1">
-              <Brain className="w-3.5 h-3.5" />
-              {report.ai_model_used}
-            </span>
-            <span className="flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" />
-              {new Date(report.generated_at).toLocaleString()}
-            </span>
-          </div>
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-5 space-y-5">
         <section>
-          <h3 className="text-lg font-semibold mb-2 text-[var(--accent)]">Executive Summary</h3>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{report.executive_summary}</p>
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="w-1 h-6 rounded-full bg-secondary" />
+            <h3 className="text-base font-headline font-semibold uppercase tracking-wider text-secondary">Executive Summary</h3>
+          </div>
+          <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap pl-4">{report.executive_summary}</p>
         </section>
 
-        <hr className="border-[var(--border)]" />
+        <div className="border-t border-outline-variant/50" />
 
         <section>
-          <h3 className="text-lg font-semibold mb-2 text-[var(--accent)]">Technical Details</h3>
-          <div className="text-sm leading-relaxed whitespace-pre-wrap bg-[var(--bg-primary)] p-4 rounded-lg border border-[var(--border)]">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="w-1 h-6 rounded-full bg-tertiary" />
+            <h3 className="text-base font-headline font-semibold uppercase tracking-wider text-tertiary">Technical Details</h3>
+          </div>
+          <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap font-mono bg-surface-container p-4 rounded-md border border-outline-variant/45">
             {report.technical_details}
           </div>
         </section>
 
-        <hr className="border-[var(--border)]" />
+        <div className="border-t border-outline-variant/50" />
 
         <section>
-          <h3 className="text-lg font-semibold mb-2 text-[var(--success)]">Remediation Plan</h3>
-          <div className="text-sm leading-relaxed whitespace-pre-wrap bg-[var(--success)]/5 p-4 rounded-lg border border-[var(--success)]/20">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="w-1 h-6 rounded-full bg-primary" />
+            <h3 className="text-base font-headline font-semibold uppercase tracking-wider text-primary">Remediation Plan</h3>
+          </div>
+          <div className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap bg-primary/10 p-4 rounded-md border border-primary/25">
             {report.remediation_plan}
           </div>
         </section>
       </div>
-    </div>
+    </section>
   );
 }

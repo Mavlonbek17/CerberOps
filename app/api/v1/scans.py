@@ -8,8 +8,10 @@ from sqlmodel import select
 
 from app.core.exceptions import ScopeValidationError
 from app.database import get_session
-from app.models import Finding, ScanJob, ScanStatus
+from app.models import Finding, Report, ScanJob, ScanStatus
 from app.schemas import (
+    ChatRequest,
+    ChatResponse,
     ErrorResponse,
     FindingOut,
     ScanCreated,
@@ -17,6 +19,7 @@ from app.schemas import (
     ScanRequest,
     ScanSummary,
 )
+from app.services.chat_service import chat_about_scan
 from app.services.scope_validator import validate_target
 from app.tasks.scan_tasks import execute_scan
 
@@ -51,6 +54,9 @@ def _finding_to_out(f: Finding) -> FindingOut:
         remediation=f.remediation,
         is_duplicate=f.is_duplicate,
         created_at=f.created_at,
+        ai_verdict=f.ai_verdict,
+        ai_triage_notes=f.ai_triage_notes,
+        has_poc=bool(f.poc_code),
     )
 
 
@@ -95,6 +101,7 @@ async def create_scan(
         target=target,
         scanners=",".join(body.scanners),
         allow_internal=body.allow_internal,
+        smart_recon=body.smart_recon,
     )
     session.add(job)
     await session.commit()
@@ -180,7 +187,57 @@ async def get_scan(
         created_at=job.created_at,
         updated_at=job.updated_at,
         completed_at=job.completed_at,
+        smart_recon=job.smart_recon,
+        recon_summary=job.recon_summary,
+        ai_scan_plan=job.ai_scan_plan,
     )
+
+
+@router.post(
+    "/scan/{job_id}/chat",
+    response_model=ChatResponse,
+    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+async def chat_with_scan(
+    job_id: str,
+    body: ChatRequest,
+    session: AsyncSession = Depends(get_session),
+) -> ChatResponse:
+    """Ask the local AI a natural-language question about this scan's results.
+
+    Conversation history is kept client-side — pass prior turns in the
+    `history` field on each request.
+    """
+    stmt = select(ScanJob).where(ScanJob.id == job_id)
+    result = await session.execute(stmt)
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Scan job {job_id} not found")
+
+    if job.status != ScanStatus.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Scan is {job.status.value}. Chat is available only after completion.",
+        )
+
+    findings_stmt = select(Finding).where(Finding.scan_job_id == job_id)
+    findings_result = await session.execute(findings_stmt)
+    findings = list(findings_result.scalars().all())
+
+    report_stmt = select(Report).where(Report.scan_job_id == job_id)
+    report_result = await session.execute(report_stmt)
+    report = report_result.scalar_one_or_none()
+
+    result_data = await chat_about_scan(
+        job=job,
+        findings=findings,
+        report=report,
+        message=body.message,
+        history=[h.model_dump() for h in body.history],
+    )
+
+    return ChatResponse(response=result_data["response"], ai_model_used=result_data["ai_model_used"])
 
 
 @router.delete(

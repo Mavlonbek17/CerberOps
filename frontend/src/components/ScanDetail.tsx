@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { Shield, ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  ShieldAlert,
+  ExternalLink,
+  FileText,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+} from 'lucide-react';
 import type { ScanDetail as ScanDetailType, Finding, Severity } from '../types';
 
 interface Props {
@@ -7,85 +14,100 @@ interface Props {
   onViewReport: (jobId: string) => void;
 }
 
-const SEVERITY_COLORS: Record<Severity, string> = {
-  critical: 'bg-red-500/20 text-red-400 border-red-500/30',
-  high: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  low: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  info: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+const SEV_STYLE: Record<Severity, { bg: string; text: string; dot: string }> = {
+  critical: { bg: 'bg-crit/10 border-crit/20', text: 'text-crit', dot: 'bg-crit' },
+  high: { bg: 'bg-high/10 border-high/20', text: 'text-high', dot: 'bg-high' },
+  medium: { bg: 'bg-med/10 border-med/20', text: 'text-med', dot: 'bg-med' },
+  low: { bg: 'bg-low/10 border-low/20', text: 'text-low', dot: 'bg-low' },
+  info: { bg: 'bg-info/10 border-info/20', text: 'text-info', dot: 'bg-info' },
 };
 
-const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
+const SEV_ORDER: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
-function SeverityBadge({ severity }: { severity: Severity }) {
+function SeverityPill({ severity }: { severity: Severity }) {
+  const s = SEV_STYLE[severity];
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium border ${SEVERITY_COLORS[severity]}`}>
-      {severity.toUpperCase()}
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border ${s.bg} ${s.text} uppercase tracking-wider`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+      {severity}
     </span>
   );
 }
 
 function FindingRow({ finding }: { finding: Finding }) {
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className="border-b border-[var(--border)] last:border-0">
+    <div className="border-b border-border/50 last:border-0">
       <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full p-3 text-left hover:bg-[var(--bg-primary)] transition-colors flex items-start gap-3"
+        onClick={() => setOpen(!open)}
+        className="w-full px-4 py-3 text-left hover:bg-surface-0/30 transition-colors flex items-start gap-3 cursor-pointer"
       >
-        <SeverityBadge severity={finding.severity} />
+        <div className="mt-0.5 shrink-0">
+          <SeverityPill severity={finding.severity} />
+        </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium">{finding.title}</div>
-          <div className="text-xs text-[var(--text-secondary)] mt-0.5">
-            {finding.host}{finding.port ? `:${finding.port}` : ''}
-            {finding.scanner_source && ` | ${finding.scanner_source}`}
+          <div className="text-sm font-medium leading-snug">{finding.title}</div>
+          <div className="text-[11px] font-mono text-text-3 mt-0.5">
+            {finding.host}
+            {finding.port ? `:${finding.port}` : ''}
+            <span className="mx-1.5 text-border">|</span>
+            {finding.scanner_source}
           </div>
         </div>
-        {expanded ? <ChevronUp className="w-4 h-4 mt-1 shrink-0" /> : <ChevronDown className="w-4 h-4 mt-1 shrink-0" />}
+        <div className="mt-1 shrink-0 text-text-3">
+          {open ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
+        </div>
       </button>
 
-      {expanded && (
-        <div className="px-3 pb-3 ml-20 text-sm space-y-2">
+      {open && (
+        <div className="px-4 pb-4 ml-[88px] space-y-2.5 text-sm">
           {finding.description && (
-            <div>
-              <span className="text-[var(--text-secondary)]">Description: </span>
-              {finding.description}
-            </div>
+            <p className="text-text-2 leading-relaxed">{finding.description}</p>
           )}
+
           {finding.url && (
-            <div className="flex items-center gap-1">
-              <span className="text-[var(--text-secondary)]">URL: </span>
-              <a href={finding.url} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline flex items-center gap-1">
-                {finding.url.substring(0, 80)} <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
+            <a
+              href={finding.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-accent hover:text-accent-hover text-xs font-mono transition-colors"
+            >
+              {finding.url.substring(0, 80)}
+              <ExternalLink className="w-3 h-3" />
+            </a>
           )}
+
           {finding.cve_ids.length > 0 && (
-            <div>
-              <span className="text-[var(--text-secondary)]">CVEs: </span>
+            <div className="flex flex-wrap gap-1.5">
               {finding.cve_ids.map((cve) => (
                 <a
                   key={cve}
                   href={`https://nvd.nist.gov/vuln/detail/${cve}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--accent)] hover:underline mr-2"
+                  className="text-[11px] font-mono px-2 py-0.5 rounded bg-crit/10 text-crit hover:bg-crit/20 transition-colors"
                 >
                   {cve}
                 </a>
               ))}
             </div>
           )}
+
           {finding.evidence && (
-            <div>
-              <span className="text-[var(--text-secondary)]">Evidence: </span>
-              <code className="text-xs bg-[var(--bg-primary)] px-1.5 py-0.5 rounded">{finding.evidence.substring(0, 200)}</code>
-            </div>
+            <code className="block text-xs font-mono p-3 rounded-lg bg-surface-0 border border-border text-text-2 overflow-x-auto">
+              {finding.evidence.substring(0, 300)}
+            </code>
           )}
+
           {finding.remediation && (
-            <div className="mt-2 p-2 bg-[var(--success)]/10 border border-[var(--success)]/20 rounded text-xs">
-              <span className="font-medium text-[var(--success)]">Remediation: </span>
+            <div className="p-3 rounded-lg bg-ok/5 border border-ok/15 text-xs text-ok leading-relaxed">
               {finding.remediation}
             </div>
           )}
@@ -96,66 +118,105 @@ function FindingRow({ finding }: { finding: Finding }) {
 }
 
 export default function ScanDetailView({ scan, onViewReport }: Props) {
-  const sortedFindings = [...scan.findings].sort(
-    (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)
+  const sorted = [...scan.findings].sort(
+    (a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity),
+  );
+
+  const isRunning = ['queued', 'running', 'parsing', 'analyzing'].includes(
+    scan.status,
   );
 
   return (
-    <div className="bg-[var(--bg-card)] rounded-lg border border-[var(--border)]">
+    <div className="bg-surface-1 rounded-xl border border-border overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-[var(--border)]">
+      <div className="px-5 py-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Shield className="w-5 h-5 text-[var(--accent)]" />
-            Scan Results
-          </h2>
-          {scan.status === 'completed' && (
-            <button
-              onClick={() => onViewReport(scan.id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 rounded-lg transition-colors"
-            >
-              <FileText className="w-4 h-4" />
-              AI Report
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-accent" />
+            <h2 className="text-sm font-semibold uppercase tracking-wider">
+              Results
+            </h2>
+          </div>
+          <div className="flex items-center gap-2">
+            {scan.status === 'completed' && (
+              <button
+                onClick={() => onViewReport(scan.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 rounded-lg transition-colors border border-accent/20 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                AI Report
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="text-sm text-[var(--text-secondary)] mb-3">
-          Target: <span className="text-[var(--text-primary)]">{scan.target}</span>
+        {/* Target */}
+        <div className="font-mono text-sm text-text-2 mb-3">
+          {scan.target}
         </div>
 
-        {/* Progress bar */}
-        {scan.status !== 'completed' && scan.status !== 'failed' && (
-          <div className="w-full h-1.5 bg-[var(--bg-primary)] rounded-full overflow-hidden mb-3">
-            <div
-              className="h-full bg-[var(--accent)] rounded-full transition-all duration-500"
-              style={{ width: `${scan.progress}%` }}
-            />
+        {/* Progress */}
+        {isRunning && (
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-1.5 text-xs text-accent">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span className="capitalize">{scan.status}</span>
+              </div>
+              <span className="text-xs font-mono text-text-3">
+                {scan.progress}%
+              </span>
+            </div>
+            <div className="w-full h-1 bg-surface-3 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${scan.progress}%` }}
+              />
+            </div>
           </div>
         )}
 
         {/* Severity summary */}
         <div className="flex gap-2 flex-wrap">
-          {SEVERITY_ORDER.map((sev) => {
+          {SEV_ORDER.map((sev) => {
             const count = scan.severity_counts[sev] || 0;
             if (count === 0) return null;
+            const s = SEV_STYLE[sev];
             return (
-              <span key={sev} className={`px-2 py-1 rounded text-xs font-medium border ${SEVERITY_COLORS[sev]}`}>
-                {count} {sev.toUpperCase()}
+              <span
+                key={sev}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium border ${s.bg} ${s.text}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                {count}
               </span>
             );
           })}
           {scan.findings_count === 0 && scan.status === 'completed' && (
-            <span className="text-sm text-[var(--success)]">No vulnerabilities found</span>
+            <span className="text-xs font-mono text-ok">
+              No vulnerabilities found
+            </span>
           )}
         </div>
+
+        {scan.error_message && (
+          <div className="mt-3 p-3 rounded-lg bg-crit/5 border border-crit/15 text-xs text-crit font-mono">
+            {scan.error_message}
+          </div>
+        )}
       </div>
 
-      {/* Findings list */}
-      <div className="max-h-[600px] overflow-y-auto">
-        {sortedFindings.map((f) => (
-          <FindingRow key={f.id} finding={f} />
-        ))}
+      {/* Findings */}
+      <div className="max-h-[550px] overflow-y-auto">
+        {sorted.length > 0 ? (
+          sorted.map((f) => <FindingRow key={f.id} finding={f} />)
+        ) : (
+          !isRunning && (
+            <div className="p-8 text-center text-text-3 text-sm">
+              No findings to display
+            </div>
+          )
+        )}
       </div>
     </div>
   );

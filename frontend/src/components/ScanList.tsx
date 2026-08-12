@@ -1,70 +1,80 @@
-import { Clock, AlertTriangle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, Loader2, Trash2, RotateCw } from 'lucide-react';
 import type { ScanSummary, ScanStatus } from '../types';
 
 interface Props {
   scans: ScanSummary[];
   onSelect: (id: string) => void;
+  onCancel: (id: string) => void;
   selectedId: string | null;
 }
 
-const STATUS_CONFIG: Record<ScanStatus, { icon: typeof Clock; color: string; label: string }> = {
-  queued: { icon: Clock, color: 'text-yellow-400', label: 'Queued' },
-  running: { icon: Loader2, color: 'text-blue-400', label: 'Running' },
-  parsing: { icon: Loader2, color: 'text-blue-400', label: 'Parsing' },
-  analyzing: { icon: Loader2, color: 'text-purple-400', label: 'Analyzing' },
-  completed: { icon: CheckCircle, color: 'text-green-400', label: 'Completed' },
-  failed: { icon: XCircle, color: 'text-red-400', label: 'Failed' },
-  cancelled: { icon: XCircle, color: 'text-gray-400', label: 'Cancelled' },
+const STATUS: Record<ScanStatus, { icon: typeof Clock; color: string; label: string; spin?: boolean }> = {
+  queued:    { icon: Clock,        color: 'text-tertiary',          label: 'Queued' },
+  running:   { icon: RotateCw,     color: 'text-primary',           label: 'Running',   spin: true },
+  parsing:   { icon: Loader2,      color: 'text-primary',           label: 'Parsing',   spin: true },
+  analyzing: { icon: Loader2,      color: 'text-primary',           label: 'Analyzing', spin: true },
+  completed: { icon: CheckCircle2, color: 'text-secondary',         label: 'Done' },
+  failed:    { icon: XCircle,      color: 'text-error',             label: 'Failed' },
+  cancelled: { icon: XCircle,      color: 'text-on-surface-variant', label: 'Cancelled' },
 };
 
-export default function ScanList({ scans, onSelect, selectedId }: Props) {
-  if (scans.length === 0) {
-    return (
-      <div className="bg-[var(--bg-card)] rounded-lg border border-[var(--border)] p-6">
-        <p className="text-[var(--text-secondary)] text-center">No scans yet. Start one above.</p>
-      </div>
-    );
-  }
-
+export default function ScanList({ scans, onSelect, onCancel, selectedId }: Props) {
   return (
-    <div className="bg-[var(--bg-card)] rounded-lg border border-[var(--border)]">
-      <div className="p-4 border-b border-[var(--border)]">
-        <h2 className="text-lg font-semibold">Recent Scans</h2>
+    <div className="bg-surface-container border border-outline-variant rounded-xl flex flex-col h-full overflow-hidden">
+
+      <div className="px-4 py-3 border-b border-outline-variant flex items-center justify-between shrink-0">
+        <h3 className="text-[14px] font-semibold text-on-background">Scans</h3>
+        <span className="text-[12px] text-on-surface-variant font-medium">{scans.length}</span>
       </div>
-      <div className="divide-y divide-[var(--border)]">
+
+      <div className="flex-1 overflow-y-auto divide-y divide-outline-variant/60">
+        {scans.length === 0 && (
+          <div className="py-12 text-center text-[13px] text-on-surface-variant">
+            No scans yet.
+          </div>
+        )}
+
         {scans.map((scan) => {
-          const cfg = STATUS_CONFIG[scan.status];
+          const cfg = STATUS[scan.status];
           const Icon = cfg.icon;
-          const isActive = scan.status === 'running' || scan.status === 'parsing' || scan.status === 'analyzing';
+          const isCancellable = ['queued', 'running', 'parsing', 'analyzing'].includes(scan.status);
+          const sel = selectedId === scan.id;
 
           return (
-            <button
+            <div
               key={scan.id}
-              onClick={() => onSelect(scan.id)}
-              className={`w-full p-4 text-left hover:bg-[var(--bg-primary)] transition-colors ${
-                selectedId === scan.id ? 'bg-[var(--bg-primary)]' : ''
+              className={`group relative px-4 py-3.5 transition-colors cursor-pointer ${
+                sel ? 'bg-primary/8' : 'hover:bg-surface-container-high/60'
               }`}
+              onClick={() => onSelect(scan.id)}
             >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium truncate max-w-[70%]">{scan.target}</span>
-                <div className={`flex items-center gap-1.5 text-xs ${cfg.color}`}>
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'animate-spin' : ''}`} />
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-[13px] font-medium text-on-background truncate max-w-[180px]">
+                  {scan.target.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                </span>
+                <span className={`flex items-center gap-1 text-[11px] font-medium ${cfg.color}`}>
+                  <Icon className={`w-3 h-3 ${cfg.spin ? 'animate-spin' : ''}`} />
                   {cfg.label}
-                </div>
+                </span>
               </div>
-              <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
-                <span>{scan.scanners.join(', ')}</span>
-                <div className="flex items-center gap-3">
-                  {scan.findings_count > 0 && (
-                    <span className="flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" />
-                      {scan.findings_count}
-                    </span>
-                  )}
-                  <span>{new Date(scan.created_at).toLocaleString()}</span>
-                </div>
+
+              <div className="flex items-center justify-between text-[11px] text-on-surface-variant">
+                <span>{scan.scanners.map((s) => s.toUpperCase()).join(' · ')}</span>
+                <span className={scan.findings_count > 0 ? 'text-tertiary font-medium' : ''}>
+                  {isCancellable && scan.progress !== undefined ? `${scan.progress}%` : `${scan.findings_count} findings`}
+                </span>
               </div>
-            </button>
+
+              {isCancellable && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onCancel(scan.id); }}
+                  className="absolute top-3 right-3 p-1 rounded text-on-surface-variant hover:text-error opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                  title="Cancel scan"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

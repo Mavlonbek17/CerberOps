@@ -55,3 +55,9 @@ htmlcov/
 # Celery
 celerybeat-schedule
 celerybeat.pid
+
+# Redis dump
+dump.rdb
+
+# Runtime secrets
+.cerberops_api_key

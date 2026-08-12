@@ -1,6 +1,6 @@
 # CerberOps
 
-**DevSecOps vulnerability orchestrator** — Nmap, Nuclei, and OWASP ZAP behind one API, with AI-powered remediation via local Ollama models.
+**DevSecOps Vulnerability Orchestrator** — Nmap, Nuclei, and OWASP ZAP unified behind one API, with AI-powered triage and remediation running entirely on your machine via Ollama.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
@@ -9,98 +9,145 @@
 
 ---
 
-## Why CerberOps
-
-Running multiple security scanners means juggling different CLIs, output formats, and report styles. CerberOps wraps three industry-standard tools into a single async pipeline:
+## What it does
 
 | Problem | CerberOps Solution |
-|---------|-------------------|
-| Different scanner CLIs and output formats | One REST API, one normalized finding schema |
-| Scanning blocks your terminal for minutes | Async Celery workers, 202 Accepted + poll or WebSocket |
-| Duplicate findings across tools | SHA-256 fingerprint deduplication engine |
-| Raw JSON output nobody reads | AI-generated executive summary + remediation plan |
-| Cloud AI means sending your vuln data externally | Local Ollama models, your data never leaves your machine |
+|---|---|
+| Three scanners, three CLIs, three output formats | One REST API, one normalized finding schema |
+| Scans block your terminal for minutes | Async Celery workers — fire and poll |
+| Same vulnerability reported by all three tools | SHA-256 fingerprint deduplication engine |
+| Raw JSON output nobody reads | AI executive summary + remediation plan |
+| Cloud AI means your vuln data leaves your network | Local Ollama — nothing ever leaves your machine |
 
-## Architecture
+---
 
-```
-                    +------------------+
-                    |   React UI       |
-                    |   (Vite + TW)    |
-                    +--------+---------+
-                             |
-                    +--------+---------+
-    CLI (Typer) --> |   FastAPI API     |
-                    |   /api/v1/*       |
-                    +--------+---------+
-                             |
-                    +--------+---------+
-                    |   Celery + Redis  |
-                    |   Task Queue      |
-                    +--------+---------+
-                             |
-              +--------------+--------------+
-              |              |              |
-        +-----+----+  +-----+----+  +------+-----+
-        |   Nmap   |  |  Nuclei  |  | OWASP ZAP  |
-        | (subnet) |  | (vuln    |  | (web app   |
-        |          |  |  detect) |  |  DAST)     |
-        +----------+  +----------+  +------------+
-                             |
-                    +--------+---------+
-                    |  Dedup Engine     |
-                    |  + PostgreSQL     |
-                    +--------+---------+
-                             |
-                    +--------+---------+
-                    |  Ollama (Local)   |
-                    |  AI Remediation   |
-                    +------------------+
-```
+## Requirements
 
-## Quick Start
+| Requirement | Notes |
+|---|---|
+| [Docker Desktop](https://docs.docker.com/desktop/) | v24+ with Compose v2 |
+| [Ollama](https://ollama.com) | For local AI — optional, falls back to templates |
+| 8 GB RAM minimum | 16 GB recommended for better AI models |
+| macOS, Linux, or Windows WSL2 | |
 
-### One-command setup (Docker)
+---
+
+## Quick Start — One Command
 
 ```bash
 git clone https://github.com/Mavlonbek17/CerberOps.git
 cd CerberOps
-./scripts/setup.sh
+chmod +x install.sh
+./install.sh
 ```
 
-This checks dependencies, installs Ollama + a small AI model, and brings up the full stack via Docker Compose.
+The installer:
+1. Detects your OS and architecture (macOS Intel/Apple Silicon, Linux, WSL2)
+2. Installs Docker if missing
+3. Installs Ollama if missing
+4. Recommends an AI model based on your available RAM and pulls it
+5. Creates `.env` from the template
+6. Builds and starts all Docker services
+7. Runs a health check and prints status
 
-### Manual setup
+To update everything later:
 
 ```bash
-# Prerequisites: Docker, Docker Compose, Ollama (optional)
+./install.sh --update
+```
 
-# 1. Clone and configure
+---
+
+## Manual Setup
+
+If you prefer step-by-step control:
+
+```bash
+# 1. Clone
 git clone https://github.com/Mavlonbek17/CerberOps.git
 cd CerberOps
+
+# 2. Configure
 cp .env.example .env
+# Edit .env if needed (defaults work out of the box)
 
-# 2. Start services
+# 3. Start all services
 docker compose up -d
 
-# 3. (Optional) Pull an AI model
+# 4. Pull an AI model (choose based on your RAM — see AI Models section below)
 ollama pull qwen2.5-coder:1.5b
 ```
 
-**Access points:**
+---
+
+## Access Points
 
 | Service | URL |
-|---------|-----|
-| Dashboard | http://localhost:3000 |
-| API Docs (Swagger) | http://localhost:8000/docs |
-| API Docs (ReDoc) | http://localhost:8000/redoc |
-| Health Check | http://localhost:8000/api/v1/health |
+|---|---|
+| **Dashboard (Web UI)** | http://localhost:3000 |
+| **API Docs (Swagger)** | http://localhost:8000/docs |
+| **API Docs (ReDoc)** | http://localhost:8000/redoc |
+| **Health Check** | http://localhost:8000/api/v1/health |
+
+---
+
+## AI Models
+
+CerberOps uses **local Ollama models** — scan data never leaves your machine.
+
+### Choosing a model
+
+| Model | RAM needed | Download size | Speed | Quality | Best for |
+|---|---|---|---|---|---|
+| `llama3.2:1b` | 4 GB | ~600 MB | Very fast | Basic | Low-RAM machines |
+| `qwen2.5-coder:1.5b` | 6 GB | ~1 GB | Fast | Good | **Default — works on most machines** |
+| `llama3.1:8b` | 10 GB | ~5 GB | Medium | Great | Better summaries |
+| `qwen2.5-coder:7b` | 10 GB | ~4.5 GB | Medium | **Best** | Recommended if you have 16 GB+ RAM |
+
+> **Tip:** The installer detects your RAM automatically and recommends the right model. You can always switch by editing `OLLAMA_MODEL` in `.env` and pulling the new model.
+
+### Pulling a model manually
+
+```bash
+# Recommended default
+ollama pull qwen2.5-coder:1.5b
+
+# Best quality (needs 16 GB RAM)
+ollama pull qwen2.5-coder:7b
+
+# List what you have
+ollama list
+```
+
+### What the AI does
+
+- **Smart Recon** — Before scanning, the AI fingerprints the target and narrows down which Nuclei templates and Nmap port ranges to use, reducing scan time and noise.
+- **False Positive Filter** — After scanning, the AI reviews low and medium severity findings and tags obvious noise as filtered, so you focus on real issues.
+- **Executive Summary** — Generates a human-readable report with risk overview, technical details, and a prioritized remediation plan.
+- **AI Chat** — Ask follow-up questions about any completed scan directly in the dashboard.
+- **PoC Generator** — For critical/high findings, generates a safe proof-of-concept verification script.
+
+If Ollama is not running, CerberOps falls back to template-based reports — all scanning still works normally.
+
+---
+
+## Scanners
+
+| Scanner | Type | What it finds |
+|---|---|---|
+| **Nmap** | Network | Open ports, service versions, risky services (Telnet, FTP, exposed databases) |
+| **Nuclei** | Vulnerability | CVEs, misconfigurations, exposed admin panels, default credentials (10,000+ templates) |
+| **OWASP ZAP** | Web App DAST | XSS, SQLi, CSRF, broken auth, missing security headers, cookie issues |
+
+> **ZAP note:** ZAP runs as a Docker container and needs a few seconds to initialise on first start. It is included in `docker compose up -d` automatically.
+
+---
 
 ## Usage
 
 ### Web UI
 
-Open http://localhost:3000, enter a target URL, select scanners, and click **Start Scan**. Results stream in real time with severity-coded findings and an AI-generated remediation report.
+Open http://localhost:3000, enter a target URL or IP, choose your scan engines, and click **Launch Scan**. Results update in real time with severity-coded findings. Click **AI Chat** to ask questions about the scan.
 
 ### REST API
 
@@ -108,11 +155,12 @@ Open http://localhost:3000, enter a target URL, select scanners, and click **Sta
 # Start a scan
 curl -X POST http://localhost:8000/api/v1/scan \
   -H "Content-Type: application/json" \
-  -d '{"target": "https://example.com", "scanners": ["nmap", "nuclei"]}'
+  -d '{"target": "https://example.com", "scanners": ["nmap", "nuclei", "zap"]}'
 
-# Response: {"job_id": "abc123...", "status": "queued", "message": "..."}
+# Response
+# {"job_id": "abc123", "status": "queued"}
 
-# Check status
+# Poll status + findings
 curl http://localhost:8000/api/v1/scan/abc123
 
 # Get AI report
@@ -122,129 +170,111 @@ curl http://localhost:8000/api/v1/report/abc123
 ### CLI
 
 ```bash
-# Install CLI
+# Install
 pip install -e .
 
-# Run a scan (waits for completion)
+# Scan and wait for results
 cerberops scan https://example.com
 
 # Check status
 cerberops status <job_id>
 
-# View AI report
+# Read AI report
 cerberops report <job_id>
 
-# List recent scans
+# List all scans
 cerberops list
 
 # System health
 cerberops health
 ```
 
-## API Reference
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/health` | System health and scanner availability |
-| `POST` | `/api/v1/scan` | Start a new scan (returns 202 + job_id) |
-| `GET` | `/api/v1/scan` | List all scans |
-| `GET` | `/api/v1/scan/{job_id}` | Scan status and findings |
-| `DELETE` | `/api/v1/scan/{job_id}` | Cancel a scan |
-| `GET` | `/api/v1/report/{job_id}` | AI-generated remediation report |
-| `POST` | `/api/v1/setup` | First-run API key generation |
-
-Full interactive docs at `/docs` (Swagger) or `/redoc`.
-
-## Scanners
-
-| Scanner | Type | What It Finds |
-|---------|------|--------------|
-| **Nmap** | Network | Open ports, service versions, risky services (telnet, FTP, exposed databases) |
-| **Nuclei** | Vulnerability | CVEs, misconfigurations, exposed panels, default credentials (10,000+ templates) |
-| **OWASP ZAP** | Web App (DAST) | XSS, SQLi, CSRF, broken auth, security headers, cookie issues |
-
-## AI Models
-
-CerberOps uses **local AI models** via Ollama. Your scan data never leaves your machine.
-
-| Model | RAM | Speed | Quality |
-|-------|-----|-------|---------|
-| `qwen2.5-coder:1.5b` | ~1 GB | Fast | Good (default) |
-| `llama3.2:1b` | ~1 GB | Fast | Good |
-| `llama3.1:8b` | ~5 GB | Medium | Better |
-| `qwen2.5-coder:7b` | ~5 GB | Medium | Better |
-
-```bash
-# Pull a model
-ollama pull qwen2.5-coder:1.5b
-
-# Or use the helper script
-./scripts/pull_models.sh
-```
-
-If Ollama is not available, CerberOps falls back to template-based reports.
+---
 
 ## Configuration
 
-All settings via environment variables (`.env` file):
+All settings are in the `.env` file. Copy `.env.example` to get started.
 
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | `postgresql+asyncpg://...` | PostgreSQL connection string |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis broker URL |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `qwen2.5-coder:1.5b` | Default AI model |
-| `NMAP_TIMEOUT` | `600` | Nmap scan timeout (seconds) |
-| `NUCLEI_TIMEOUT` | `900` | Nuclei scan timeout |
-| `ZAP_TIMEOUT` | `1200` | ZAP scan timeout |
-| `ALLOW_INTERNAL_TARGETS` | `false` | Allow scanning private IPs |
-| `LOG_LEVEL` | `INFO` | Logging verbosity |
+|---|---|---|
+| `OLLAMA_MODEL` | `qwen2.5-coder:1.5b` | AI model to use |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+| `ZAP_API_URL` | `http://localhost:8080` | ZAP daemon URL |
+| `ZAP_TIMEOUT` | `1200` | ZAP scan timeout in seconds |
+| `NMAP_TIMEOUT` | `600` | Nmap timeout in seconds |
+| `NUCLEI_TIMEOUT` | `900` | Nuclei timeout in seconds |
+| `ALLOW_INTERNAL_TARGETS` | `false` | Allow scanning private/RFC1918 IPs |
+| `DATABASE_URL` | `postgresql+asyncpg://...` | PostgreSQL connection |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis broker |
+| `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`) |
+
+---
+
+## API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/health` | System health and scanner availability |
+| `POST` | `/api/v1/scan` | Start a new scan |
+| `GET` | `/api/v1/scan` | List all scans |
+| `GET` | `/api/v1/scan/{job_id}` | Scan status and findings |
+| `DELETE` | `/api/v1/scan/{job_id}` | Cancel a running scan |
+| `GET` | `/api/v1/report/{job_id}` | AI-generated remediation report |
+| `POST` | `/api/v1/chat/{job_id}` | Chat with AI about a scan |
+| `GET` | `/api/v1/findings/{job_id}` | Raw findings list |
+
+Full interactive docs at http://localhost:8000/docs
+
+---
 
 ## Project Structure
 
 ```
 CerberOps/
 ├── app/
-│   ├── main.py              # FastAPI application
-│   ├── config.py             # Pydantic settings
-│   ├── database.py           # Async PostgreSQL
-│   ├── models.py             # SQLModel ORM models
-│   ├── schemas.py            # API request/response schemas
-│   ├── api/v1/               # REST endpoints
-│   ├── adapters/             # Scanner wrappers (Nmap, Nuclei, ZAP)
-│   ├── services/             # Business logic (dedup, AI, orchestration)
-│   ├── tasks/                # Celery task definitions
-│   └── core/                 # Security, exceptions
-├── cli/                      # Typer CLI application
-├── frontend/                 # React + Vite + Tailwind
-├── scripts/                  # Setup and utility scripts
-├── tests/                    # Test suite
-├── docker-compose.yml        # Full-stack orchestration
-├── Dockerfile                # Backend + scanners
-└── Dockerfile.frontend       # React production build
+│   ├── adapters/          # Scanner wrappers (Nmap, Nuclei, ZAP)
+│   ├── api/v1/            # REST endpoints
+│   ├── services/          # AI triage, chat, dedup, orchestration
+│   ├── tasks/             # Celery task definitions
+│   ├── core/              # Security, exceptions
+│   ├── models.py          # SQLModel ORM models
+│   ├── schemas.py         # API request/response schemas
+│   └── config.py          # Pydantic settings
+├── frontend/              # React + Vite + Tailwind dashboard
+├── cli/                   # Typer CLI
+├── scripts/               # Utility scripts
+├── tests/                 # Test suite
+├── install.sh             # One-command installer
+├── docker-compose.yml     # Full-stack orchestration
+├── Dockerfile             # Backend + scanners image
+└── Dockerfile.frontend    # React production build
 ```
 
-## Security Considerations
+---
 
-- **Scope Validation**: Loopback and RFC1918 addresses are blocked by default
-- **API Key Auth**: All mutating endpoints require `X-API-Key` header
-- **Non-root Docker**: Application runs as unprivileged user inside containers
-- **JSON-only Celery**: No pickle deserialization (prevents RCE via task serialization)
-- **Hard timeouts**: Every scanner has configurable hard time limits
-- **No external data**: AI models run locally, scan data never leaves your network
+## Security
 
-> **Important**: Only scan targets you own or have explicit authorization to test.
+- Private IPs and loopback addresses are blocked by default (`ALLOW_INTERNAL_TARGETS=false`)
+- API key authentication on all mutating endpoints (`X-API-Key` header)
+- Docker containers run as non-root users
+- No pickle serialization in Celery (prevents RCE via task queue)
+- Hard timeouts on every scanner
+- All AI processing is local — no data sent to external services
+
+> **Important:** Only scan targets you own or have explicit written authorization to test. Unauthorized scanning is illegal.
+
+---
 
 ## Development
 
 ```bash
-# Install dependencies
+# Install dev dependencies
 pip install -e ".[dev]"
 
-# Run API locally
-uvicorn app.main:app --reload
+# Run API locally (without Docker)
+uvicorn app.main:app --reload --port 8000
 
-# Run Celery worker
+# Run Celery worker locally
 celery -A app.tasks.celery_app worker --loglevel=info -Q scans
 
 # Run frontend dev server
@@ -256,6 +286,8 @@ pytest
 # Lint
 ruff check .
 ```
+
+---
 
 ## Contributing
 

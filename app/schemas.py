@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models import ScanStatus, Severity
+from app.models import AiVerdict, ScanStatus, Severity
 
 # ── Requests ──────────────────────────────────────────────────────
 
@@ -23,6 +23,11 @@ class ScanRequest(BaseModel):
     allow_internal: bool = Field(
         default=False,
         description="Allow scanning RFC1918 / loopback addresses (use for testing only)",
+    )
+    smart_recon: bool = Field(
+        default=True,
+        description="Fingerprint the target first and let local AI narrow scanner "
+        "templates/ports before running the full scan (faster, less noisy)",
     )
 
 
@@ -53,6 +58,9 @@ class FindingOut(BaseModel):
     remediation: str | None = None
     is_duplicate: bool = False
     created_at: datetime
+    ai_verdict: AiVerdict = AiVerdict.UNREVIEWED
+    ai_triage_notes: str | None = None
+    has_poc: bool = False
 
 
 class ScanDetail(BaseModel):
@@ -70,6 +78,9 @@ class ScanDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None = None
+    smart_recon: bool = True
+    recon_summary: str | None = None
+    ai_scan_plan: str | None = None
 
 
 class ScanSummary(BaseModel):
@@ -101,6 +112,35 @@ class HealthCheck(BaseModel):
     scanners: dict[str, bool] = {}
     ollama_available: bool = False
     database: bool = False
+
+
+class PocOut(BaseModel):
+    """Autonomous proof-of-concept verification script for a finding."""
+
+    finding_id: str
+    poc_code: str
+    poc_explanation: str
+    ai_model_used: str
+    generated_at: datetime
+
+
+class ChatMessageIn(BaseModel):
+    role: str = Field(description="'user' or 'assistant'")
+    content: str
+
+
+class ChatRequest(BaseModel):
+    """Request body for POST /api/v1/scan/{job_id}/chat."""
+
+    message: str = Field(..., description="The user's question about this scan")
+    history: list[ChatMessageIn] = Field(
+        default=[], description="Prior turns in this conversation, oldest first"
+    )
+
+
+class ChatResponse(BaseModel):
+    response: str
+    ai_model_used: str
 
 
 class SetupResponse(BaseModel):

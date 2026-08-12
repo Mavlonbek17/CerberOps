@@ -39,3 +39,6 @@ celery_app.conf.update(
 )
 
 celery_app.autodiscover_tasks(["app.tasks"])
+
+# Import tasks so Celery registers them after the app is created
+from app.tasks import scan_tasks  # noqa: E402, F401

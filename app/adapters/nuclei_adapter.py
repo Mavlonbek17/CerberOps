@@ -101,6 +101,11 @@ class NucleiScanner(BaseScanner):
         if templates and isinstance(templates, str):
             cmd.extend(["-t", templates])
 
+        # AI Smart Recon: narrow the template set to detected technologies
+        tags = options.get("tags")
+        if tags and isinstance(tags, list) and tags:
+            cmd.extend(["-tags", ",".join(str(t) for t in tags)])
+
         return cmd
 
     def _parse_jsonl(self, content: str) -> list[RawFinding]:

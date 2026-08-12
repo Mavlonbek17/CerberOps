@@ -5,6 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Optional
 
+from sqlalchemy import DateTime
 from sqlmodel import Column, Enum, Field, Relationship, SQLModel
 
 # ── Enums ─────────────────────────────────────────────────────────
@@ -33,6 +34,12 @@ class ScannerType(str, enum.Enum):
     ZAP = "zap"
 
 
+class AiVerdict(str, enum.Enum):
+    UNREVIEWED = "unreviewed"
+    CONFIRMED = "confirmed"
+    LIKELY_FALSE_POSITIVE = "likely_false_positive"
+
+
 # ── Helpers ───────────────────────────────────────────────────────
 
 def _utcnow() -> datetime:
@@ -58,9 +65,23 @@ class ScanJob(SQLModel, table=True):
     allow_internal: bool = Field(default=False)
     progress: int = Field(default=0)
     error_message: str | None = Field(default=None, max_length=4096)
-    created_at: datetime = Field(default_factory=_utcnow)
-    updated_at: datetime = Field(default_factory=_utcnow)
-    completed_at: datetime | None = Field(default=None)
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    completed_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+
+    # ── AI Smart Recon ───────────────────────────────────────────
+    smart_recon: bool = Field(default=True)
+    recon_summary: str | None = Field(default=None)
+    ai_scan_plan: str | None = Field(default=None)
 
     findings: list["Finding"] = Relationship(back_populates="scan_job")
     report: Optional["Report"] = Relationship(back_populates="scan_job")
@@ -89,7 +110,26 @@ class Finding(SQLModel, table=True):
     reference_urls: str | None = Field(default=None)
     remediation: str | None = Field(default=None)
     is_duplicate: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+    # ── AI False Positive Triage ─────────────────────────────────
+    ai_verdict: AiVerdict = Field(
+        default=AiVerdict.UNREVIEWED,
+        sa_column=Column(Enum(AiVerdict), nullable=False, default=AiVerdict.UNREVIEWED),
+    )
+    ai_triage_notes: str | None = Field(default=None)
+
+    # ── Autonomous PoC Generator ──────────────────────────────────
+    poc_code: str | None = Field(default=None)
+    poc_explanation: str | None = Field(default=None)
+    poc_model_used: str | None = Field(default=None, max_length=128)
+    poc_generated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
 
     scan_job: Optional["ScanJob"] = Relationship(back_populates="findings")
 
@@ -104,6 +144,9 @@ class Report(SQLModel, table=True):
     technical_details: str = Field(default="")
     remediation_plan: str = Field(default="")
     ai_model_used: str = Field(default="", max_length=128)
-    generated_at: datetime = Field(default_factory=_utcnow)
+    generated_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
     scan_job: Optional["ScanJob"] = Relationship(back_populates="report")
