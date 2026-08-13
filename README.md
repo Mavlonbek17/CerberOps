@@ -7,6 +7,15 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg)](docker-compose.yml)
 
+
+
+
+
+
+
+<img width="3454" height="1936" alt="image" src="https://github.com/user-attachments/assets/ff3edf91-cb5a-497a-bb53-dcc28d8b0c9e" />
+
+
 ---
 
 ## What it does
